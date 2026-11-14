@@ -83,7 +83,6 @@ import com.maxrave.domain.utils.toSyncedLyrics
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.LogLevel
 import com.maxrave.logger.Logger
-import kotlinx.coroutines.flow.onEach
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.expect.getDownloadFolderPath
 import io.ktor.client.HttpClient
@@ -268,7 +267,6 @@ class SharedViewModel(
     /** 当前激活音源,扇形菜单与各页面 TODO 分支共用这一份状态 */
     val selectedSource: StateFlow<String> =
         dataStoreManager.selectedSource
-            .onEach { Logger.w("SRCPROBE", "selectedSource emission: $it") }
             .stateIn(viewModelScope, SharingStarted.Eagerly, com.maxrave.domain.source.MusicSource.YOUTUBE_MUSIC.name)
 
     val neteaseLoggedIn: StateFlow<Boolean> =
