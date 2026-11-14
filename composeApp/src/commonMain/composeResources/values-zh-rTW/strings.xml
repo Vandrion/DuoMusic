@@ -1480,4 +1480,5 @@ DuoMusic</string>
     <string name="netease_quality_jyeffect">高清環繞聲 (VIP)</string>
     <string name="netease_quality_sky">沉浸環繞聲 (VIP)</string>
     <string name="netease_quality_jymaster">超清母帶 (VIP)</string>
+    <string name="update_already_latest">已是最新版本</string>
 </resources>

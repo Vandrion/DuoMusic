@@ -1475,4 +1475,5 @@ DuoMusic</string>
     <string name="browser_login_rejected">ログイン情報を検証できませんでした。接続を確認するか、このプロファイルでログインし直して更新してください。</string>
     <string name="browser_login_refresh">ブラウザプロファイルを更新</string>
     <string name="soundcloud_play_count_info">%1$s - 曲情報</string>
+    <string name="update_already_latest">最新バージョンです</string>
 </resources>

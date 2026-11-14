@@ -1473,4 +1473,5 @@
     <string name="browser_login_rejected">无法验证登录状态。请检查网络，或在该配置文件中重新登录后刷新。</string>
     <string name="browser_login_refresh">刷新浏览器配置文件</string>
     <string name="soundcloud_play_count_info">%1$s - 歌曲信息</string>
+    <string name="update_already_latest">已是最新版本</string>
 </resources>

@@ -147,6 +147,7 @@ import simpmusic.composeapp.generated.resources.added_to_queue
 import simpmusic.composeapp.generated.resources.already_in_queue
 import simpmusic.composeapp.generated.resources.login_netease_first
 import simpmusic.composeapp.generated.resources.switch_source_failed
+import simpmusic.composeapp.generated.resources.update_already_latest
 import simpmusic.composeapp.generated.resources.update_check_failed
 import simpmusic.composeapp.generated.resources.added_to_youtube_liked
 import simpmusic.composeapp.generated.resources.disliked
@@ -2023,7 +2024,7 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
-    fun checkForUpdate() {
+    fun checkForUpdate(notifyIfLatest: Boolean = false) {
         // Raised before the coroutine starts, so Home's launch banner, which reads it right after
         // startup, can never miss a check that is already under way but not yet marked.
         _isCheckingUpdate.value = true
@@ -2049,6 +2050,10 @@ class SharedViewModel(
                         is Resource.Success if (data != null) -> {
                             _updateResponse.value = data
                             showedUpdateDialog = true
+                            // 手动检查时,已是最新版也给一句确认(自动检查静默,避免每次启动弹 toast)
+                            if (notifyIfLatest && !VersionManager.isBehind(data.tagName)) {
+                                makeToast(getString(Res.string.update_already_latest))
+                            }
                         }
 
                         else -> {
@@ -2061,6 +2066,9 @@ class SharedViewModel(
                                 if (fb is Resource.Success && fbData != null) {
                                     _updateResponse.value = fbData
                                     showedUpdateDialog = true
+                                    if (notifyIfLatest && !VersionManager.isBehind(fbData.tagName)) {
+                                        makeToast(getString(Res.string.update_already_latest))
+                                    }
                                 } else {
                                     log("Check for update via redirect also failed: ${fb.message}", LogLevel.WARN)
                                     makeToast(getString(Res.string.update_check_failed))
