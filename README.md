@@ -10,8 +10,8 @@
 并做了大量播放稳定性、性能与本地体验优化。
 
 <p>
-<a href="https://github.com/Vandrox/DuoMusic/releases"><img src="https://img.shields.io/github/v/release/Vandrox/DuoMusic?label=%E5%8F%91%E7%89%88&logo=github" alt="release"></a>
-<a href="https://github.com/Vandrox/DuoMusic"><img src="https://img.shields.io/github/stars/Vandrox/DuoMusic?style=social" alt="stars"></a>
+<a href="https://github.com/Vandrion/DuoMusic/releases"><img src="https://img.shields.io/github/v/release/Vandrion/DuoMusic?label=%E5%8F%91%E7%89%88&logo=github" alt="release"></a>
+<a href="https://github.com/Vandrion/DuoMusic"><img src="https://img.shields.io/github/stars/Vandrion/DuoMusic?style=social" alt="stars"></a>
 <a href="https://github.com/cwuom/NeriPlayer"><img src="https://img.shields.io/badge/%E5%8F%82%E8%80%83%E9%A1%B9%E7%9B%AE-NeriPlayer-orange" alt="NeriPlayer"></a>
 </p>
 
@@ -27,9 +27,9 @@
 
 | | |
 |---|---|
-| **安装包** | [GitHub Releases](https://github.com/Vandrox/DuoMusic/releases/latest)（`arm64-v8a` APK，每次发版附在资产里） |
+| **安装包** | [GitHub Releases](https://github.com/Vandrion/DuoMusic/releases/latest)（`arm64-v8a` APK，每次发版附在资产里） |
 | **系统要求** | Android 12（API 31）及以上 |
-| **更新日志** | 见各 [Release 说明](https://github.com/Vandrox/DuoMusic/releases) |
+| **更新日志** | 见各 [Release 说明](https://github.com/Vandrion/DuoMusic/releases) |
 
 > 下载目录改为「按歌手/专辑整理」的文件式存储（对文件管理器友好）；Sentry 等遥测已移除。
 
@@ -135,13 +135,13 @@ Discord 集成、导入播放列表等），完整清单与恢复方法见 [docs
 ## 🛠 构建
 
 ```bash
-git clone --recurse-submodules https://github.com/Vandrox/DuoMusic.git
+git clone --recurse-submodules https://github.com/Vandrion/DuoMusic.git
 cd DuoMusic
 ./gradlew :composeApp:assembleDebug
 ```
 
-- Android 端为主要适配与验证平台（debug 包名 `com.github.Vandrox.duomusic.dev`）；桌面端沿用开源社区能力，网易源未做专门验证。
-- core 子模块：[Vandrox/DuoMusic-Core](https://github.com/Vandrox/DuoMusic-Core)。
+- Android 端为主要适配与验证平台（debug 包名 `com.github.Vandrion.duomusic.dev`）；桌面端沿用开源社区能力，网易源未做专门验证。
+- core 子模块：[Vandrion/DuoMusic-Core](https://github.com/Vandrion/DuoMusic-Core)。
 
 ## 🙏 致谢
 

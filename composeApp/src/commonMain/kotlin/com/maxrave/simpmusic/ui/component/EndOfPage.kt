@@ -28,14 +28,14 @@ internal val LocalAppContentPadding = compositionLocalOf { PaddingValues() }
 /** Extra floating player clearance on rail layouts, where Scaffold has no bottom bar inset. */
 internal val LocalAppBottomOverlayPadding = compositionLocalOf { 0.dp }
 
-/** Credit line shared by every page footer and the about page: "@{year} {app} {version}\nVandrox". */
+/** Credit line shared by every page footer and the about page: "@{year} {app} {version}\nVandrion". */
 @Composable
 fun endOfPageCredit(): String =
     "@${now().year} " + stringResource(Res.string.app_name) + " " +
         stringResource(
             Res.string.version_format,
             VersionManager.getVersionName(),
-        ) + "\nVandrox"
+        ) + "\nVandrion"
 
 @Composable
 fun EndOfPage(

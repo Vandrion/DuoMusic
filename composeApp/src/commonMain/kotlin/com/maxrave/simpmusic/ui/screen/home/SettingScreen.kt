@@ -3213,7 +3213,7 @@ fun SettingScreen(
                     title = stringResource(Res.string.author),
                     subtitle = stringResource(Res.string.maxrave_dev),
                     onClick = {
-                        uriHandler.openUri("https://github.com/Vandrox/DuoMusic")
+                        uriHandler.openUri("https://github.com/Vandrion/DuoMusic")
                     },
                 )
                 SettingItem(

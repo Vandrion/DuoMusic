@@ -117,7 +117,7 @@ fun CreditScreen(
             textDecoration = TextDecoration.Underline,
             modifier =
                 Modifier.clickable {
-                    openUrl("https://github.com/Vandrox/DuoMusic")
+                    openUrl("https://github.com/Vandrion/DuoMusic")
                 },
         )
 
@@ -140,7 +140,7 @@ fun CreditScreen(
             // GitHub button
             TextButton(
                 onClick = {
-                    openUrl("https://github.com/Vandrox/DuoMusic")
+                    openUrl("https://github.com/Vandrion/DuoMusic")
                 },
                 modifier =
                     Modifier
@@ -154,7 +154,7 @@ fun CreditScreen(
             // Issue tracker button
             TextButton(
                 onClick = {
-                    openUrl("https://github.com/Vandrox/DuoMusic/issues")
+                    openUrl("https://github.com/Vandrion/DuoMusic/issues")
                 },
                 modifier =
                     Modifier

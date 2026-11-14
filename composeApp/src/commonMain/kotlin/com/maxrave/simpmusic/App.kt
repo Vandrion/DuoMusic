@@ -1052,7 +1052,7 @@ fun App(
                                 onClick = {
                                     shouldShowUpdateDialog = false
                                     viewModel.showedUpdateDialog = false
-                                    openUrl("https://github.com/Vandrox/DuoMusic/releases/latest")
+                                    openUrl("https://github.com/Vandrion/DuoMusic/releases/latest")
                                 },
                             ) {
                                 Text(

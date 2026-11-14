@@ -67,7 +67,7 @@
         </intent>
     </queries>
     <queries>
-        <package android:name="com.github.Vandrox.duomusic" />
+        <package android:name="com.github.Vandrion.duomusic" />
         <package android:name="com.github.hedroid.duomusic" />
     </queries>
     <queries>
