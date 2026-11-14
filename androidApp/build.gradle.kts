@@ -20,7 +20,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.github.hedroid.duomusic"
+        applicationId = "com.github.Vandrox.duomusic"
         // fork 定案(2026-09-25):只面向现代设备,最低 Android 12(API 31)
         minSdk = 31
         targetSdk = 36

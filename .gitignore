@@ -19,6 +19,7 @@ crowdin.yml
 .kotlin/
 .idea
 /simpmusic.jks
+/duomusic.jks
 /ffmpeg-kit/build/
 
 #dev files
@@ -55,3 +56,4 @@ sentry.properties
 # 用户本地备份(含登录 cookie,严禁入库)
 simpmusic_backup*.zip
 .demo-screenshots/
+/simpmusic.jks.bak-*
