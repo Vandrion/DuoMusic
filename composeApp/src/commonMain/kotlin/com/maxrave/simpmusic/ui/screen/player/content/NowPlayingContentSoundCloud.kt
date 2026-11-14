@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,6 +86,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -147,6 +150,7 @@ import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SoundCloudPlayerViewModel
 import com.maxrave.simpmusic.viewModel.UIEvent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.resources.stringResource
@@ -415,8 +419,8 @@ private fun NowPlayingSoundCloudLayout(
                         beyondViewportPageCount = 1,
                         userScrollEnabled = state.controllerState.repeatState !is RepeatState.One && state.artworkQueue.isNotEmpty(),
                         key = { page ->
-                            val id = state.artworkQueue.getOrNull(page)?.videoId.orEmpty()
-                            "soundCloudArtwork_${id}_$page"
+                            state.artworkPageKeys.getOrNull(page)
+                                ?: ("soundCloudArtwork_" + state.artworkQueue.getOrNull(page)?.videoId.orEmpty() + "_$page")
                         },
                     ) { page ->
                         SoundCloudArtwork(
@@ -706,7 +710,14 @@ private fun NowPlayingSoundCloudLayout(
                     tint = if (state.controllerState.isLiked) colors.primary else colors.onSurface,
                     onClick = { actions.onUIEvent(UIEvent.ToggleLike) },
                 )
-                RippleIconButton(imageVector = SimpIcons.CommentOutline, tint = colors.onSurface, onClick = actions.onShowComments)
+                RippleIconButton(
+                    imageVector = SimpIcons.CommentOutline,
+                    tint = colors.onSurface,
+                    // Fork: 网易歌走 M7 网易评论 sheet(经典主题同款路由);YT 数字/云盘门控在壳层
+                    onClick = {
+                        if (state.isNeteaseSong) actions.onShowNeteaseComments() else actions.onShowComments()
+                    },
+                )
                 RippleIconButton(
                     imageVector = SimpIcons.Shuffle,
                     tint = if (state.controllerState.isShuffle) colors.primary else colors.onSurface,
@@ -812,12 +823,11 @@ private fun SoundCloudArtwork(
     val isCurrentPage = page == null || state.artworkQueue.isEmpty() || page == state.currentOrderIndex
     val canvas = state.screenData.canvasData.takeIf { isCurrentPage }
     val showCurrentVideo = showVideo && isCurrentPage
+    // Fork(经典主题 55b58ac6 同款): 每页永远画自己队列行的封面——URL 不随 isCurrentPage 翻转,
+    // 翻页落位后 AsyncImage 不重建,消除"切歌封面跳一下"。调色板馈送仍只由当前页上报。
     val thumbnailUrl =
-        if (isCurrentPage) {
-            state.screenData.thumbnailURL
-        } else {
-            page?.let { state.artworkQueue.getOrNull(it) }?.thumbnails?.maxByOrNull { it.width * it.height }?.url
-        }
+        page?.let { state.artworkQueue.getOrNull(it) }?.thumbnails?.maxByOrNull { it.width * it.height }?.url
+            ?: state.screenData.thumbnailURL
     Box(modifier = modifier.fillMaxSize()) {
         var canvasReady by remember(canvas?.url) { mutableStateOf(false) }
         if (canvas != null) {
@@ -842,22 +852,31 @@ private fun SoundCloudArtwork(
                 .diskCacheKey(artworkUrl + "BIGGER")
                 .crossfade(550)
                 .build()
-        // Re-enter when a prefetched cover becomes current, even if its URL is unchanged, so the
-        // memory-cache success still hands the new track's bitmap to the shell.
-        key(isCurrentPage) {
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                onSuccess = { if (isCurrentPage) actions.onArtworkBitmap(it.result.image.toImageBitmap()) },
-                onError = {
+        val painter = rememberAsyncImagePainter(request)
+        Image(
+            painter = painter,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().alpha(coverAlpha),
+        )
+        // 加载失败回退(maxres→hqdefault),与经典主题同款
+        LaunchedEffect(painter) {
+            painter.state.collectLatest { state ->
+                if (state is AsyncImagePainter.State.Error) {
                     val fallback = artworkUrl?.replace("maxresdefault", "hqdefault")
                     if (fallback != null && fallback != artworkUrl) artworkUrl = fallback
-                },
-                contentScale = ContentScale.Crop,
-                placeholder = rememberHolderPainter(),
-                error = rememberHolderPainter(),
-                modifier = Modifier.fillMaxSize().alpha(coverAlpha),
-            )
+                }
+            }
+        }
+        // 当前页确立后用已解码位图补发调色板(经典主题同款):每页数据驱动后翻页不再重发请求,
+        // onSuccess 只在首次加载时来一次,补发保证落位后壳层调色板跟上前一首换色。
+        LaunchedEffect(painter, isCurrentPage) {
+            if (!isCurrentPage) return@LaunchedEffect
+            painter.state.collectLatest { state ->
+                if (state is AsyncImagePainter.State.Success) {
+                    actions.onArtworkBitmap(state.result.image.toImageBitmap())
+                }
+            }
         }
         // From the bottom up to the line of lyrics the cover melts into a blurred copy of itself, faded
         // in by a DstIn mask on the smoothstep curve the scrim over it uses. At the top of the ramp the
