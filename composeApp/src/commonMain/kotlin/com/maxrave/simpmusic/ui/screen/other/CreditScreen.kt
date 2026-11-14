@@ -43,7 +43,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.maxrave.simpmusic.expect.openUrl
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.copy
+import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
@@ -68,13 +71,14 @@ fun CreditScreen(
     navController: NavController,
 ) {
     val hazeState = rememberHazeState()
+    val scrollState = rememberScrollState()
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
                 .padding(paddingValues.copy(bottom = 0.dp))
                 .padding(top = 64.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .hazeSource(state = hazeState),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -190,6 +194,10 @@ fun CreditScreen(
 
         EndOfPage()
     }
+    VerticalScrollBar(
+        scrollState = scrollState,
+        modifier = Modifier.padding(top = paddingValues.calculateTopPadding() + 64.dp, bottom = DesktopMiniPlayerClearance),
+    )
     TopAppBar(
         modifier =
             Modifier

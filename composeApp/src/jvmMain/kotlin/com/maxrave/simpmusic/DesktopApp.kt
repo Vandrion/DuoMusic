@@ -34,9 +34,11 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
 import com.maxrave.domain.mediaservice.handler.ToastType
 import com.maxrave.domain.notification.DesktopNotificationManager
+import com.maxrave.domain.repository.LibrarySyncHostRepository
 import com.maxrave.data.io.getHomeFolderPath
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.di.viewModelModule
+import com.maxrave.simpmusic.expect.ui.LibrarySyncLoginPrompt
 import com.maxrave.simpmusic.extension.DesktopWindowChrome
 import com.maxrave.simpmusic.ui.component.CustomTitleBar
 import com.maxrave.simpmusic.ui.mini_player.MiniPlayerManager
@@ -54,10 +56,14 @@ import io.sentry.Sentry
 import io.sentry.SentryLevel
 import io.sentry.protocol.OperatingSystem
 import io.sentry.protocol.User
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +79,7 @@ import org.koin.core.context.loadKoinModules
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.inject
 import org.koin.mp.KoinPlatform.getKoin
+import org.simpmusic.discord.configDiscord
 import org.simpmusic.lastfm.configLastfm
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.app_name
@@ -198,6 +205,9 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
         deepLinkArg?.let { DesktopDeepLinkHandler.onNewUri(it) }
     }
 
+    // Before Koin: DiscordRepository is created at start and reads which login this build uses.
+    configDiscord(BuildKonfig.discordClientId)
+
     // Initialize Koin ONCE before application starts
     startKoin {
         loadAllModules(
@@ -302,6 +312,9 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
 
     val desktopNotificationManager = getKoin().get<DesktopNotificationManager>()
     desktopNotificationManager.initialize()
+
+    // Library sync (#2663): reopens the server for paired phones. Off the startup path: it binds a port.
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { getKoin().get<LibrarySyncHostRepository>().start() }
 
     val sharedViewModel = getKoin().get<SharedViewModel>()
     if (sharedViewModel.shouldCheckForUpdate()) {
@@ -541,6 +554,7 @@ fun runDesktopApp(args: Array<String> = emptyArray()) {
                     onOpenDesktopNotificationSettings =
                         desktopNotificationManager::openNotificationSettings,
                 )
+                LibrarySyncLoginPrompt(sharedViewModel)
                 ToastHost()
             }
         }

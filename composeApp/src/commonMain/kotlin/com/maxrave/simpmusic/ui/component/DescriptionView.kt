@@ -65,7 +65,7 @@ fun DescriptionView(
     // 基于裁掉尾部空白后的文本。(fork f0f0cb8)
     val effectiveText = text.trimEnd()
 
-    val timeRegex = Regex("""(\d+):(\d+)(?::(\d+))?""")
+    val timeRegex = TIMESTAMP_REGEX
     // Parentheses count only as a pair: descriptions wrap links in them — "From Wikipedia
     // (https://…/Ariana_Grande)" — and `\S+` swallowed the closing one into the URL, while
     // "…/Queen_(band)" must keep its own.
@@ -203,3 +203,9 @@ fun DescriptionView(
         }
     }
 }
+
+/**
+ * A moment written into text, "m:ss" or "h:mm:ss". Descriptions and comments turn it into a seek link,
+ * and the SoundCloud style places a comment at it, so both read a moment by the same rule.
+ */
+internal val TIMESTAMP_REGEX = Regex("""(\d+):(\d+)(?::(\d+))?""")

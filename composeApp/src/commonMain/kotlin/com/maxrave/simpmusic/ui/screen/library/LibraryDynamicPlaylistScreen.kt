@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +52,8 @@ import com.maxrave.domain.mediaservice.handler.QueueData
 import com.maxrave.domain.utils.LocalResource
 import com.maxrave.domain.utils.toArrayListTrack
 import com.maxrave.domain.utils.toTrack
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.getStringBlocking
 import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.ui.component.SearchBarExit
@@ -66,10 +69,12 @@ import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.rememberSurfaceDarkColors
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
+import com.maxrave.simpmusic.ui.component.selection.SongSelectionAction
 import com.maxrave.simpmusic.ui.component.selection.SongSelectionTopAppBar
 import com.maxrave.simpmusic.ui.component.selection.rememberSongSelectionState
 import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
 import com.maxrave.simpmusic.ui.icon.Close
+import com.maxrave.simpmusic.ui.icon.Delete
 import com.maxrave.simpmusic.ui.icon.PlayCircle
 import com.maxrave.simpmusic.ui.icon.Search
 import com.maxrave.simpmusic.ui.icon.Shuffle
@@ -108,6 +113,7 @@ import simpmusic.composeapp.generated.resources.liked_songs
 import simpmusic.composeapp.generated.resources.liked_songs_count
 import simpmusic.composeapp.generated.resources.lower_plays
 import simpmusic.composeapp.generated.resources.most_played
+import simpmusic.composeapp.generated.resources.remove_download
 import simpmusic.composeapp.generated.resources.remove_download_message
 import simpmusic.composeapp.generated.resources.remove_download_title
 import simpmusic.composeapp.generated.resources.search
@@ -184,7 +190,9 @@ fun LibraryDynamicPlaylistScreen(
         parsed.topListRange()?.let { (start, end) -> analyticsViewModel.showRange(start, end) }
     }
 
-    LaunchedEffect(query) {
+    // Keyed on the downloaded list as well: a download removed while searching has to leave the
+    // filtered list too, not only the full one.
+    LaunchedEffect(query, downloaded) {
         tempFavorite = favorite.filter { it.matches(query) }
         tempFollowed = followed.filter { normalizedContains(it.name, query) }
         tempMostPlayed = mostPlayed.filter { it.matches(query) }
@@ -205,7 +213,9 @@ fun LibraryDynamicPlaylistScreen(
                 ?: emptyList()
     }
 
+    val listState = rememberLazyListState()
     LazyColumn(
+        state = listState,
         modifier = Modifier.hazeSource(hazeState),
         contentPadding = innerPadding,
     ) {
@@ -455,8 +465,14 @@ fun LibraryDynamicPlaylistScreen(
             EndOfPage(includeBottomBarPadding = false)
         }
     }
+    VerticalScrollBar(
+        scrollState = listState,
+        modifier = Modifier.padding(top = innerPadding.calculateTopPadding(), bottom = DesktopMiniPlayerClearance),
+    )
     if (showSelectionSheet) {
         val selectedIds = selectionState.selected.toList()
+        val isDownloadedList = LibraryDynamicPlaylistType.toType(type) == LibraryDynamicPlaylistType.Downloaded
+        val removeDownloadLabel = stringResource(Res.string.remove_download)
         SelectedSongsBottomSheet(
             count = selectedIds.size,
             selectionIds = selectedIds,
@@ -482,10 +498,37 @@ fun LibraryDynamicPlaylistScreen(
                 selectionViewModel.removeDownload(selectedIds)
                 selectionState.exit()
             },
+=======
+            onAddToPlaylist = { showSelectionAddToPlaylist = true },
+            // Everything in the Downloaded list is downloaded already, so Download would do nothing.
+            onDownload =
+                if (isDownloadedList) {
+                    null
+                } else {
+                    {
+                        selectionViewModel.download(selectedIds)
+                        selectionState.exit()
+                    }
+                },
+>>>>>>> upstream/dev
             onAddToFavorite = {
                 selectionViewModel.addToFavorite(selectedIds)
                 selectionState.exit()
             },
+            extraActions =
+                if (isDownloadedList) {
+                    listOf(
+                        SongSelectionAction(
+                            icon = SimpIcons.Delete,
+                            label = removeDownloadLabel,
+                        ) {
+                            viewModel.removeDownloads(selectedIds)
+                            selectionState.exit()
+                        },
+                    )
+                } else {
+                    emptyList()
+                },
         )
     }
     if (showSelectionAddToPlaylist) {

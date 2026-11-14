@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.ui.component.CenterLoadingBox
 import com.maxrave.simpmusic.ui.component.EndOfPage
@@ -84,7 +87,9 @@ fun MoreAlbumsScreen(
         when (state) {
             is MoreAlbumsUIState.Success -> {
                 val data = state.albumItems
+                val gridState = rememberLazyGridState()
                 LazyVerticalGrid(
+                    state = gridState,
                     // 统一网格口径(2026-09-28,LibraryGridDefaults):160dp Adaptive tile 铺满槽位、
                     // 页边 15dp、间距 4/8dp。旧实现 0dp 页边、10dp 间距,170dp 槽里放 180dp 定宽
                     // tile(wrapContentSize 溢出槽位)。
@@ -128,6 +133,10 @@ fun MoreAlbumsScreen(
                         EndOfPage()
                     }
                 }
+                VerticalScrollBar(
+                    scrollState = gridState,
+                    modifier = Modifier.padding(top = innerPadding.calculateTopPadding() + 64.dp, bottom = DesktopMiniPlayerClearance),
+                )
                 TopAppBar(
                     modifier =
                         Modifier

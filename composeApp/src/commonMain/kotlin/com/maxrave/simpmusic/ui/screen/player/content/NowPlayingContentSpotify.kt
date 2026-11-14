@@ -166,6 +166,7 @@ import com.maxrave.simpmusic.ui.icon.SubtitlesOff
 import com.maxrave.simpmusic.ui.icon.ThumbsUpDown
 import com.maxrave.simpmusic.ui.utils.formatCompactCount
 import com.maxrave.simpmusic.ui.screen.player.content.applemusic.AudioOutputSheetHost
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.blackMoreOverlay
 import com.maxrave.simpmusic.ui.theme.overlay
 import com.maxrave.simpmusic.ui.theme.typo
@@ -605,7 +606,7 @@ fun NowPlayingContentSpotify(
                                                 .padding(3.dp)
                                                 .fillMaxWidth()
                                                 .aspectRatio(if (pageIsVideoTrack) 16f / 9 else 1f)
-                                                .clip(RoundedCornerShape(8.dp))
+                                                .clip(ArtworkShape)
                                                 .alpha(if (pageHidesArtwork) 0f else 1f),
                                     )
 
@@ -644,7 +645,7 @@ fun NowPlayingContentSpotify(
                                             modifier =
                                                 Modifier
                                                     .aspectRatio(state.videoAspectRatio)
-                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clip(ArtworkShape)
                                                     .background(Color.Black),
                                         ) {
                                             Box(Modifier.fillMaxSize()) {
@@ -1879,7 +1880,7 @@ internal fun NowPlayingTrackInfoRow(
                         .width(55.dp)
                         .padding(end = 10.dp)
                         .clip(
-                            RoundedCornerShape(4.dp),
+                            ArtworkShape,
                         ).align(Alignment.CenterVertically),
             )
         }

@@ -162,6 +162,7 @@ import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.expect.hapticTapFeedback
 import com.maxrave.simpmusic.expect.copyToClipboard
 import com.maxrave.simpmusic.expect.shareUrl
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.expect.ui.persistPickedImage
 import com.maxrave.simpmusic.expect.ui.photoPickerResult
 import com.maxrave.simpmusic.extension.displayNameRes
@@ -217,6 +218,7 @@ import com.maxrave.common.NETEASE_CLOUD_DISK_PLAYLIST_ID
 import com.maxrave.common.NETEASE_MV_MEDIA_ID_PREFIX
 import com.maxrave.simpmusic.ui.navigation.destination.list.SimilarSongsDestination
 import com.maxrave.simpmusic.ui.screen.player.deriveOrderIndex
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.utils.formatCompactCount
 import com.maxrave.simpmusic.ui.utils.albumShareLink
 import com.maxrave.simpmusic.ui.utils.playlistShareLink
@@ -286,6 +288,7 @@ import simpmusic.composeapp.generated.resources.bpm
 import simpmusic.composeapp.generated.resources.can_not_be_empty
 import simpmusic.composeapp.generated.resources.cancel
 import simpmusic.composeapp.generated.resources.back
+import simpmusic.composeapp.generated.resources.cancel_download
 import simpmusic.composeapp.generated.resources.cloud_match_action
 import simpmusic.composeapp.generated.resources.cloud_match_confirm
 import simpmusic.composeapp.generated.resources.cloud_match_search_hint
@@ -378,6 +381,8 @@ import simpmusic.composeapp.generated.resources.plays
 import simpmusic.composeapp.generated.resources.processing
 import simpmusic.composeapp.generated.resources.queue
 import simpmusic.composeapp.generated.resources.radio
+import simpmusic.composeapp.generated.resources.remove_download
+import simpmusic.composeapp.generated.resources.remove_from_cache
 import simpmusic.composeapp.generated.resources.save
 import simpmusic.composeapp.generated.resources.save_to_local_playlist
 import simpmusic.composeapp.generated.resources.saved_to_local_playlist
@@ -1701,6 +1706,10 @@ fun QueueBottomSheet(
                             )
                         }
                     }
+                    VerticalScrollBar(
+                        scrollState = lazyListState,
+                        modifier = Modifier.matchParentSize(),
+                    )
                 }
             }
         }
@@ -2411,7 +2420,7 @@ fun NowPlayingBottomSheet(
                                 Modifier
                                     .align(Alignment.CenterVertically)
                                     .size(44.dp)
-                                    .clip(RoundedCornerShape(6.dp)),
+                                    .clip(ArtworkShape),
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -2597,6 +2606,9 @@ fun NowPlayingBottomSheet(
                             } else {
                                 Color.Unspecified
                             },
+                        // The row names what a tap does rather than the state: the icon already
+                        // shows the state, and a label that only repeated it hid the one place a
+                        // single download could be removed (#2176).
                         text =
                             // LIVE 直播流不可下载:行内文案+置灰提前告知(执行层 DownloadUtils 还有拒载兜底)
                             if (downloadBlockedAsLive) {
@@ -2604,9 +2616,9 @@ fun NowPlayingBottomSheet(
                             } else {
                                 when (uiState.songUIState.downloadState) {
                                     DownloadState.STATE_NOT_DOWNLOADED -> Res.string.download
-                                    DownloadState.STATE_DOWNLOADING -> Res.string.downloading
-                                    DownloadState.STATE_DOWNLOADED -> Res.string.downloaded
-                                    DownloadState.STATE_PREPARING -> Res.string.downloading
+                                    DownloadState.STATE_DOWNLOADING -> Res.string.cancel_download
+                                    DownloadState.STATE_DOWNLOADED -> Res.string.remove_download
+                                    DownloadState.STATE_PREPARING -> Res.string.cancel_download
                                     else -> Res.string.download
                                 }
                             },

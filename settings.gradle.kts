@@ -61,6 +61,7 @@ include(
     ":lastfm",
     ":lastfm-empty",
     ":kizzy",
+    ":discord",
     ":listenTogether",
     ":loginSync",
 )
@@ -79,6 +80,7 @@ project(":kotlinYtmusicScraper").projectDir = File(serviceDir, "kotlinYtmusicScr
 project(":spotify").projectDir = File(serviceDir, "spotify")
 project(":netease").projectDir = File(serviceDir, "netease")
 project(":kizzy").projectDir = File(serviceDir, "kizzy")
+project(":discord").projectDir = File(serviceDir, "discord")
 project(":listenTogether").projectDir = File(serviceDir, "listenTogether")
 project(":loginSync").projectDir = File(serviceDir, "loginSync")
 

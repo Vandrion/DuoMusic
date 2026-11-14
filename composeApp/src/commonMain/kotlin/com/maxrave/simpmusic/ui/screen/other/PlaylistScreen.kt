@@ -95,6 +95,8 @@ import coil3.request.crossfade
 import coil3.toBitmap
 import com.kyant.backdrop.highlight.Highlight
 import com.kmpalette.rememberPaletteState
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.barBlurStyle
 import com.maxrave.simpmusic.ui.component.DownloadingIndicator
 import com.maxrave.simpmusic.ui.component.BatchDownloadConfirmDialog
@@ -152,6 +154,7 @@ import com.maxrave.simpmusic.ui.icon.Search
 import com.maxrave.simpmusic.ui.icon.Shuffle
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.utils.CloudDiskArt
 import com.maxrave.simpmusic.ui.utils.cloudCoverSubduedPainter
 import com.maxrave.simpmusic.ui.theme.LocalIsDarkTheme
@@ -754,7 +757,7 @@ fun PlaylistScreen(
                                                             modifier =
                                                                 Modifier
                                                                     .size(280.dp)
-                                                                    .clip(RoundedCornerShape(8.dp)),
+                                                                    .clip(ArtworkShape),
                                                         )
                                                         Column(
                                                             modifier = Modifier.weight(1f),
@@ -1354,6 +1357,10 @@ fun PlaylistScreen(
                         }
                     }
                 }
+                VerticalScrollBar(
+                    scrollState = lazyState,
+                    modifier = Modifier.padding(bottom = DesktopMiniPlayerClearance),
+                )
 
                 AnimatedVisibility(
                     visible = showSearchBar,

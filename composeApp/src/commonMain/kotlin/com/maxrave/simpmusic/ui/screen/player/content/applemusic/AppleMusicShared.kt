@@ -88,6 +88,7 @@ import com.maxrave.simpmusic.ui.component.heartBurst
 import com.maxrave.simpmusic.ui.component.rememberHeartBurstState
 import com.maxrave.simpmusic.ui.component.rememberHolderPainter
 import com.maxrave.simpmusic.ui.icon.AddCircleOutline
+import com.maxrave.simpmusic.ui.icon.ArrowBackIosNew
 import com.maxrave.simpmusic.ui.icon.CheckCircle
 import com.maxrave.simpmusic.ui.icon.FastForward
 import com.maxrave.simpmusic.ui.icon.FastRewind
@@ -110,6 +111,7 @@ import com.maxrave.simpmusic.ui.icon.VolumeDown
 import com.maxrave.simpmusic.ui.icon.VolumeUp
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentActions
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentState
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.UIEvent
 import org.jetbrains.compose.resources.stringResource
@@ -452,6 +454,9 @@ internal fun AppleMusicCompactHeader(
     typography: AppleMusicTypography,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    // A back button ahead of the artwork; only the SoundCloud style passes one, to leave its
+    // borrowed Lyrics page for its card.
+    onBack: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -463,6 +468,11 @@ internal fun AppleMusicCompactHeader(
                 ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onBack != null) {
+            // On the circle the page's floating buttons sit on.
+            AppleMusicFloatingCircleButton(icon = SimpIcons.ArrowBackIosNew, onClick = onBack)
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         AsyncImage(
             model =
                 ImageRequest
@@ -478,7 +488,7 @@ internal fun AppleMusicCompactHeader(
             modifier =
                 Modifier
                     .size(if (compact) 44.dp else 55.dp)
-                    .clip(RoundedCornerShape(4.dp)),
+                    .clip(ArtworkShape),
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -506,7 +516,12 @@ internal fun AppleMusicCompactHeader(
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
-        AppleMusicHeaderActions(state = state, actions = actions)
+        if (onBack != null) {
+            // The SoundCloud style keeps like and add-to-liked on its card, so only more stays here.
+            AppleMusicGlyphButton(icon = SimpIcons.MoreVert, onClick = { actions.onShowMoreSheet() })
+        } else {
+            AppleMusicHeaderActions(state = state, actions = actions)
+        }
     }
 }
 

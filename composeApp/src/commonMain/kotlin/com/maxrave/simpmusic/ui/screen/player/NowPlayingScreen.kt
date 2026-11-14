@@ -117,6 +117,7 @@ import com.maxrave.common.NETEASE_MV_MEDIA_ID_PREFIX
 import com.maxrave.simpmusic.ui.screen.player.content.ArtworkPagerSnapAnimation
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentActions
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentAppleMusic
+import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentSoundCloud
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentM3Expressive
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentSpotify
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentState
@@ -555,6 +556,7 @@ fun NowPlayingScreenContent(
     var showCommentsSheet by rememberSaveable {
         mutableStateOf(false)
     }
+    var commentDraft by rememberSaveable { mutableStateOf("") }
 
     var showVoteDialog by rememberSaveable {
         mutableStateOf(false)
@@ -842,7 +844,16 @@ fun NowPlayingScreenContent(
            audioQualityLabel = formatState.toAudioQualityLabel(),
             lyricsOffsetMs = lyricsOffsetMs.toLong(),
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
-     )
+            videoId = commentsVideoId,
+    )
+    // The comments sheet reads the id off the media item instead: track is null whenever the item
+    // was not in the queue list at the moment it started, and comments exist for every track.
+    val commentsVideoId: String? =
+        nowPlayingState
+            ?.mediaItem
+            ?.let { if (it.isVideo()) it.mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO) else it.mediaId }
+            ?.takeIf { it.isNotEmpty() }
+
     val actions =
         NowPlayingContentActions(
             onUIEvent = { sharedViewModel.onUIEvent(it) },
@@ -877,8 +888,12 @@ fun NowPlayingScreenContent(
                     showNeteaseComments = true
                 }
             },
-            // YT 评论(上游 InnerTube sheet):入口三主题统一,网易走上面的 M7 sheet
-            onShowComments = { showCommentsSheet = true },
+            // YT 评论(上游 InnerTube sheet):入口三主题统一,网易走上面的 M7 sheet;
+            // 打开前清草稿(SoundCloud 时刻评论共用同一个 sheet)
+            onShowComments = {
+                commentDraft = ""
+                showCommentsSheet = true
+            },
             onNavigateToArtist = {
                 // 非完整挂载云盘歌/播客:艺人页无目标,播放页艺人名点击不跳转
                 val song = sharedViewModel.nowPlayingState.value?.songEntity
@@ -913,6 +928,11 @@ fun NowPlayingScreenContent(
             },
             onSetRemoteLiked = sharedViewModel::setRemoteSongLiked,
             onLoginRequired = sharedViewModel::notifyFavoriteNeedsLogin,
+            // SoundCloud 主题的时刻评论:带草稿打开同一个评论 sheet
+            onWriteComment = { draft ->
+                commentDraft = draft
+                showCommentsSheet = true
+            },
             onShowFullscreenLyrics = {
                 // 非完整挂载云盘歌/播客:无歌词,按钮置灰,此处兜底拦(无动作无提示)
                 if (!cloudFeaturesBlocked) showFullscreenLyrics = true
@@ -1255,6 +1275,7 @@ fun NowPlayingScreenContent(
                     navController.navigate(LoginDestination)
                 },
                 onDismiss = { showCommentsSheet = false },
+                initialDraft = commentDraft,
             )
         }
     }
@@ -1355,6 +1376,12 @@ fun NowPlayingScreenContent(
                 )
             DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC ->
                 NowPlayingContentAppleMusic(
+                    state = state,
+                    actions = actions,
+                )
+
+            DataStoreManager.NOW_PLAYING_STYLE_SOUNDCLOUD ->
+                NowPlayingContentSoundCloud(
                     state = state,
                     actions = actions,
                 )

@@ -111,8 +111,10 @@ import com.maxrave.domain.utils.connectArtists
 import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.PlatformBackHandler
 import com.maxrave.simpmusic.expect.ui.SongRecognitionSheet
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.extension.getScreenSizeInfo
@@ -149,6 +151,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.NeteaseRadioDetailDe
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PodcastDestination
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SearchScreenUIState
@@ -643,6 +646,10 @@ fun SearchScreen(
                             )
                         }
                     }
+                    VerticalScrollBar(
+                        scrollState = suggestionsState,
+                        modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
+                    )
                 }
 
                 SearchUIType.SEARCH_HISTORY -> {
@@ -735,6 +742,10 @@ fun SearchScreen(
                             }
                         }
                     }
+                    VerticalScrollBar(
+                        scrollState = historyState,
+                        modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
+                    )
                 }
 
                 SearchUIType.EMPTY -> {
@@ -863,6 +874,10 @@ fun SearchScreen(
                                 EndOfPage()
                             }
                         }
+                        VerticalScrollBar(
+                            scrollState = moodGridState,
+                            modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
+                        )
                         }
                     }
                 }
@@ -1168,6 +1183,10 @@ fun SearchScreen(
                                                         // Space at bottom to account for bottom navigation and mini player
                                                         item { Spacer(modifier = Modifier.height(150.dp)) }
                                                     }
+                                                VerticalScrollBar(
+                                                    scrollState = resultsState,
+                                                    modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
+                                                )
                                                 } else if (
                                                     // 空列表 + 失败 → 错误+重试(重跑该分类),别误报"无结果"。
                                                     // 失败的三类来源(标记都须与当前**词/源**一致):
@@ -1189,6 +1208,12 @@ fun SearchScreen(
                                                     ) {
                                                         SearchErrorColumn(onRetry = retryCurrentTabSearch)
                                                     }
+=======
+                                                    VerticalScrollBar(
+                                                        scrollState = resultsState,
+                                                        modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
+                                                    )
+>>>>>>> upstream/dev
                                                 } else {
                                                     Box(
                                                         modifier = Modifier.fillMaxSize(),
@@ -1551,7 +1576,7 @@ fun SuggestItemRow(
                             if (searchResult is ArtistsResult) {
                                 CircleShape
                             } else {
-                                RoundedCornerShape(4.dp)
+                                ArtworkShape
                             },
                         ),
             )

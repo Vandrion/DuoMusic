@@ -118,7 +118,10 @@ import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.expect.openUrl
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
 import com.maxrave.simpmusic.expect.ui.HorizontalScrollBar
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
 import com.maxrave.simpmusic.extension.angledGradientBackground
@@ -164,6 +167,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.PodcastDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.login.LoginDestination
 import com.maxrave.simpmusic.ui.screen.library.LibraryDynamicPlaylistType
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.desktopPanelDark
 import com.maxrave.simpmusic.ui.theme.typo
@@ -678,7 +682,9 @@ fun HomeScreen(
                                             ),
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    // Android drops the 8dp over each section's title: the list's own 8dp
+                                    // spacing already separates it from the shelf above.
+                                    if (getPlatform() != Platform.Android) Spacer(modifier = Modifier.height(8.dp))
                                     if (item.title == stringResource(Res.string.quick_picks)) {
                                         AnimatedVisibility(
                                             visible =
@@ -840,6 +846,14 @@ fun HomeScreen(
                             EndOfPage()
                         }
                     }
+                    VerticalScrollBar(
+                        scrollState = scrollState,
+                        modifier =
+                            Modifier.padding(
+                                top = with(LocalDensity.current) { topAppBarHeightPx.toDp() },
+                                bottom = DesktopMiniPlayerClearance,
+                            ),
+                    )
                 } else {
                     Column {
                         Spacer(
@@ -1193,9 +1207,12 @@ fun QuickPicks(
         )
     }
 
+    // Quick picks draws its own header, and its 8dp around the block and 5dp around the title are
+    // gaps no other shelf has: on Android they stood it 8dp further off the shelf above than the rest.
+    val compact = getPlatform() == Platform.Android
     Column(
         Modifier
-            .padding(vertical = 8.dp)
+            .padding(vertical = if (compact) 0.dp else 8.dp)
             .onGloballyPositioned { coordinates ->
                 with(density) {
                     widthDp = (coordinates.size.width).toDp()
@@ -1216,7 +1233,7 @@ fun QuickPicks(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 5.dp),
+                            .padding(vertical = if (compact) 0.dp else 5.dp),
                 )
             }
             if (homeItem.playAllEndpoint != null) {
@@ -1228,7 +1245,11 @@ fun QuickPicks(
         }
         LazyHorizontalGrid(
             rows = GridCells.Fixed(4),
-            modifier = Modifier.height(256.dp),
+            // Four 64dp rows; 56dp on Android, where Home packs tighter (QuickPicksItem pads to match).
+            modifier =
+                Modifier
+                    .height(if (compact) 224.dp else 256.dp)
+                    .mouseDragScroll(lazyListState, snapperFlingBehavior),
             state = lazyListState,
             flingBehavior = snapperFlingBehavior,
         ) {
@@ -1457,7 +1478,7 @@ fun ChartData(
                         onClick = { navController.navigate(PodcastDestination(podcastId = data.browseId)) },
                         data = data,
                         widthDp = if (isPortrait) gridWidthDp else minOf(gridWidthDp, LandscapeGridItemMaxWidth),
-                        thumbnailShape = RoundedCornerShape(8.dp),
+                        thumbnailShape = ArtworkShape,
                         subtitle = data.subscribers,
                     )
                 }

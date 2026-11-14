@@ -20,12 +20,14 @@ import coil3.request.crossfade
 import com.maxrave.common.AppIdentity
 import com.maxrave.data.di.loader.loadAllModules
 import com.maxrave.domain.manager.DataStoreManager
+import com.maxrave.domain.repository.LibrarySyncPhoneRepository
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.di.viewModelModule
 import com.maxrave.simpmusic.expect.CloudUploadStore
 import com.maxrave.simpmusic.expect.HapticFeedback
 import com.maxrave.simpmusic.expect.installNeteaseWatchmanTokenSource
 import com.maxrave.simpmusic.service.backup.AutoBackupScheduler
+import com.maxrave.simpmusic.service.sync.LibrarySyncScheduler
 import com.maxrave.simpmusic.utils.NetworkFirstInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
@@ -38,11 +40,13 @@ import okio.FileSystem
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.component.KoinComponent
+import org.koin.core.component.get
 import org.koin.core.component.inject
 import org.koin.core.context.loadKoinModules
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.simpmusic.crashlytics.configCrashlytics
+import org.simpmusic.discord.configDiscord
 import org.simpmusic.lastfm.configLastfm
 import java.io.File
 import java.lang.reflect.Field
@@ -62,6 +66,8 @@ class SimpMusicApplication :
         Logger.enableFileLogging(File(filesDir, "logs").path)
         configCrashlytics(this, BuildKonfig.sentryDsn)
         configLastfm(BuildKonfig.lastfmApiKey, BuildKonfig.lastfmSecret)
+        // Before Koin: DiscordRepository is created at start and reads which login this build uses.
+        configDiscord(BuildKonfig.discordClientId)
         startKoin {
             androidLogger(level = Level.DEBUG)
             androidContext(this@SimpMusicApplication)
@@ -106,6 +112,11 @@ class SimpMusicApplication :
 
         // 云盘上传的 SAF URI 读取(非 Composable 上下文用,读文件/md5/开上传流)
         CloudUploadStore.appContext = this
+
+        val librarySyncScheduler = LibrarySyncScheduler(this, get<LibrarySyncPhoneRepository>())
+        applicationScope.launch {
+            librarySyncScheduler.observeAndSchedule()
+        }
 
         CaocConfig.Builder
             .create()

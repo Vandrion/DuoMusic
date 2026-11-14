@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -46,8 +47,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.LeftToRight
 import com.maxrave.simpmusic.ui.icon.ArrowForwardIos
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import simpmusic.composeapp.generated.resources.analytics_avg_per_day
 import simpmusic.composeapp.generated.resources.analytics_busiest_day
 import simpmusic.composeapp.generated.resources.analytics_by_decade
@@ -339,7 +343,9 @@ fun AnalyticsScreen(
                 .fillMaxSize()
                 .background(pageBackground),
     ) {
+        val listState = rememberLazyListState()
         LazyColumn(
+            state = listState,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -490,6 +496,10 @@ fun AnalyticsScreen(
 
             item { EndOfPage() }
         }
+        VerticalScrollBar(
+            scrollState = listState,
+            modifier = Modifier.padding(bottom = DesktopMiniPlayerClearance),
+        )
 
         if (selectionState.isActive) {
             SongSelectionTopAppBar(
@@ -857,7 +867,7 @@ private fun LandscapeHeader(
             ArtworkImage(
                 url = topTrack.second.thumbnails,
                 onBitmap = onBitmap,
-                modifier = Modifier.size(LANDSCAPE_ARTWORK).clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier.size(LANDSCAPE_ARTWORK).clip(ArtworkShape),
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(

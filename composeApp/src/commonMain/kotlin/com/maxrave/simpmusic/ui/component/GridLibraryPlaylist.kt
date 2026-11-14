@@ -54,6 +54,8 @@ import com.maxrave.domain.data.type.MonthlyRecapItem
 import com.maxrave.domain.data.type.PlaylistType
 import com.maxrave.domain.utils.LocalResource
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.angledGradientBackground
 import com.maxrave.simpmusic.extension.scrollReportingEffect
 import com.maxrave.simpmusic.ui.icon.Add
@@ -335,6 +337,10 @@ internal inline fun <reified T> GridLibraryPlaylist(
                         EndOfPage()
                     }
                 }
+                VerticalScrollBar(
+                    scrollState = state,
+                    modifier = Modifier.padding(top = contentPadding.calculateTopPadding(), bottom = DesktopMiniPlayerClearance),
+                )
             } else if (data is LocalResource.Loading) {
                 CenterLoadingBox(
                     Modifier.fillMaxSize(),

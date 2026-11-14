@@ -29,7 +29,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +60,8 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.maxrave.domain.data.entities.NotificationEntity
+import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.extension.barBlurStyle
 import com.maxrave.simpmusic.extension.formatTimeAgo
 import com.maxrave.simpmusic.extension.mouseDragScroll
@@ -77,6 +78,7 @@ import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.icon.YouTubeMusic
 import com.maxrave.simpmusic.ui.navigation.destination.list.AlbumDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.NotificationViewModel
 import dev.chrisbanes.haze.HazeInput
@@ -154,6 +156,10 @@ fun NotificationScreen(
                         EndOfPage()
                     }
                 }
+                VerticalScrollBar(
+                    scrollState = listState,
+                    modifier = Modifier.padding(top = topAppBarHeight, bottom = DesktopMiniPlayerClearance),
+                )
             } else {
                 Box(
                     Modifier.fillMaxSize(),
@@ -369,7 +375,7 @@ fun ItemAlbumNotification(
                         .align(Alignment.CenterHorizontally)
                         .size(150.dp)
                         .clip(
-                            RoundedCornerShape(10),
+                            ArtworkShape,
                         ),
             )
             Text(
