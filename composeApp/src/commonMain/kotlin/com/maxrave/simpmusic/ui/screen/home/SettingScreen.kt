@@ -727,7 +727,6 @@ fun SettingScreen(
     val romanizationStored by sharedViewModel.getRomanizationLanguages().collectAsStateWithLifecycle("")
     val japaneseDictionaryState by viewModel.japaneseDictionaryState.collectAsStateWithLifecycle()
     var showColorPickerDialog by rememberSaveable { mutableStateOf(false) }
-    var showThirdPartyLibraries by rememberSaveable { mutableStateOf(false) }
     val loggedIn by viewModel.loggedIn.collectAsStateWithLifecycle()
     val equalizerEnabled by viewModel.equalizerEnabled.collectAsStateWithLifecycle()
     val equalizerType by viewModel.equalizerType.collectAsStateWithLifecycle()

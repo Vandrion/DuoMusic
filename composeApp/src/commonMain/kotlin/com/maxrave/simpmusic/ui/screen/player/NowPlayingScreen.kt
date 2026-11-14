@@ -782,6 +782,14 @@ fun NowPlayingScreenContent(
         ?: mediaPlayerHandler.nowPlayingState.value.songEntity?.neteaseProgramId
         ?: mediaPlayerHandler.queueData.value?.data?.listTracks?.firstOrNull { it.videoId == nowPlayingVideoId }?.neteaseProgramId
     val isPodcastEpisode = mediaPlayerHandler.queueData.value?.data?.isNeteasePodcastQueue == true || playingProgramId != null
+    // The comments sheet reads the id off the media item instead: track is null whenever the item
+    // was not in the queue list at the moment it started, and comments exist for every track.
+    val commentsVideoId: String? =
+        nowPlayingState
+            ?.mediaItem
+            ?.let { if (it.isVideo()) it.mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO) else it.mediaId }
+            ?.takeIf { it.isNotEmpty() }
+
     val state =
         NowPlayingContentState(
             screenData = screenDataState,
@@ -846,14 +854,6 @@ fun NowPlayingScreenContent(
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
             videoId = commentsVideoId,
     )
-    // The comments sheet reads the id off the media item instead: track is null whenever the item
-    // was not in the queue list at the moment it started, and comments exist for every track.
-    val commentsVideoId: String? =
-        nowPlayingState
-            ?.mediaItem
-            ?.let { if (it.isVideo()) it.mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO) else it.mediaId }
-            ?.takeIf { it.isNotEmpty() }
-
     val actions =
         NowPlayingContentActions(
             onUIEvent = { sharedViewModel.onUIEvent(it) },

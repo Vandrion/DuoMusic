@@ -70,6 +70,7 @@ val viewModelModule =
                 get(),
                 get(),
                 get(),
+                get(),
             )
         }
         single {
@@ -151,6 +152,7 @@ val viewModelModule =
         }
         viewModel {
             SettingsViewModel(
+                get(),
                 get(),
                 get(),
                 get(),

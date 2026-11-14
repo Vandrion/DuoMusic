@@ -498,19 +498,6 @@ fun LibraryDynamicPlaylistScreen(
                 selectionViewModel.removeDownload(selectedIds)
                 selectionState.exit()
             },
-=======
-            onAddToPlaylist = { showSelectionAddToPlaylist = true },
-            // Everything in the Downloaded list is downloaded already, so Download would do nothing.
-            onDownload =
-                if (isDownloadedList) {
-                    null
-                } else {
-                    {
-                        selectionViewModel.download(selectedIds)
-                        selectionState.exit()
-                    }
-                },
->>>>>>> upstream/dev
             onAddToFavorite = {
                 selectionViewModel.addToFavorite(selectedIds)
                 selectionState.exit()

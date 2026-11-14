@@ -1208,12 +1208,6 @@ fun SearchScreen(
                                                     ) {
                                                         SearchErrorColumn(onRetry = retryCurrentTabSearch)
                                                     }
-=======
-                                                    VerticalScrollBar(
-                                                        scrollState = resultsState,
-                                                        modifier = Modifier.padding(top = searchBarHeight, bottom = DesktopMiniPlayerClearance),
-                                                    )
->>>>>>> upstream/dev
                                                 } else {
                                                     Box(
                                                         modifier = Modifier.fillMaxSize(),

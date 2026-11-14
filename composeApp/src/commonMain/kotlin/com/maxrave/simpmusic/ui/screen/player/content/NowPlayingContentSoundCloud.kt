@@ -290,7 +290,8 @@ private fun NowPlayingSoundCloudLayout(
     // No scroll and no collapsing toolbar here, as in the Apple Music style.
     LaunchedEffect(Unit) { actions.onToolbarVisibilityChange(false) }
 
-    val timeline = state.timelineState
+    // Fork: 进度=timelineFlow 50ms 流(经典/M3E 同款;上游的 timelineState 已被 fork 性能批移除)
+    val timeline by state.timelineFlow.collectAsStateWithLifecycle()
     val durationMs = timeline.total.coerceAtLeast(0L)
     val isPlaying = state.controllerState.isPlaying
     // Paused as the listener sees it. The player also reports "not playing" while it buffers (a track
@@ -523,9 +524,10 @@ private fun NowPlayingSoundCloudLayout(
                     if (state.isUserLoggedIn) {
                         CornerIconButton(
                             backdrop = backdrop,
-                            icon = if (state.likeStatus) SimpIcons.CheckCircle else SimpIcons.AddCircleOutline,
+                            // Fork: 红心=云端账号状态(remoteLikeState),经 onSetRemoteLiked 翻转
+                            icon = if (state.remoteLikeState.liked == true) SimpIcons.CheckCircle else SimpIcons.AddCircleOutline,
                             tint = colors.onSurface,
-                            onClick = actions.onAddToYouTubeLiked,
+                            onClick = { actions.onSetRemoteLiked(state.remoteLikeState.liked != true) },
                         )
                     }
                     CornerIconButton(
@@ -667,8 +669,8 @@ private fun NowPlayingSoundCloudLayout(
                                 scrubbing = false
                                 if (durationMs > 0L) {
                                     pendingSeekMs = target
-                                    actions.onSliderChange(target * 100f / durationMs)
-                                    actions.onSliderChangeFinished()
+                                    // Fork: 进度写回走 UIEvent.UpdateProgress(经典/M3E 同款)
+                                    actions.onUIEvent(UIEvent.UpdateProgress(target * 100f / durationMs))
                                 }
                             },
                         )
@@ -741,8 +743,9 @@ private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRigh
         animationSpec = infiniteRepeatable(animation = tween(3200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
         label = "soundCloudSweepHead",
     )
+    val timeline by state.timelineFlow.collectAsStateWithLifecycle()
     Crossfade(
-        targetState = state.timelineState.isCrossfading to state.audioQualityLabel,
+        targetState = timeline.isCrossfading to state.audioQualityLabel,
         animationSpec = tween(300),
         label = "soundCloudPlaybackStatus",
         // Reserve the line even before format metadata arrives, so the waveform never jumps.
@@ -907,7 +910,7 @@ private fun SoundCloudArtwork(
                         shouldShowSubtitle = showSubtitle,
                         shouldScaleDownSubtitle = true,
                         isInPipMode = state.isInPipMode,
-                        timelineState = state.timelineState,
+                        timelineFlow = state.timelineFlow,
                         lyricsData = state.screenData.lyricsData?.lyrics,
                         translatedLyricsData = state.screenData.lyricsData?.translatedLyrics?.first,
                         mainTextStyle = typo().bodyLarge,

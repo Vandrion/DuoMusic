@@ -117,6 +117,7 @@ import com.maxrave.domain.mediaservice.handler.QueueData
 import com.maxrave.domain.utils.toSongEntity
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.extension.mouseDragScroll
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.DesktopMiniPlayerClearance
