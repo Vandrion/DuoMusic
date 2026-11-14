@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import com.maxrave.simpmusic.getPlatform
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.extension.getScreenSizeInfo
 import androidx.compose.animation.core.animateFloatAsState
@@ -147,6 +148,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.home.NeteaseNewAlbumsDest
 import com.maxrave.simpmusic.ui.navigation.destination.home.NeteaseTagDestination
 import com.maxrave.simpmusic.ui.navigation.destination.home.NeteaseToplistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.NeteaseHomeViewModel
 import com.maxrave.simpmusic.viewModel.NeteaseMvGridSource
@@ -289,6 +291,11 @@ fun NeteaseHomeScreen(
                 }
                 item(key = "end") { EndOfPage() }
             }
+            // 桌面滚动条(Android actual 为 no-op)
+            VerticalScrollBar(
+                scrollState = scrollState,
+                modifier = Modifier.matchParentSize(),
+            )
         }
         // 悬浮顶栏 + chips(对照上游骨架)
         AnimatedContent(
@@ -567,7 +574,7 @@ internal fun NeteaseSongCard(
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(ArtworkShape)
                         .hoverZoom(hovered),
             )
             HoverPlayButton(visible = hovered, onClick = onClick)

@@ -66,6 +66,7 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.MvListDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.screen.home.NeteaseAlbumRow
 import com.maxrave.simpmusic.ui.screen.home.NeteaseArtistRow
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.LibraryGridDefaults
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.logger.Logger
@@ -434,7 +435,7 @@ private fun SubscribedMvRow(
                 Modifier
                     .size(112.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(ArtworkShape),
         )
         Column(
             modifier =
@@ -486,7 +487,7 @@ private fun CloudDiskRow(
                 Modifier
                     .size(112.dp)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(ArtworkShape),
         ) {
             // 兜底=业内通用中性底+半透明图标(2026-10-10 用户:蓝色手绘太丑):
             // surfaceVariant 底+低透明 Cloud 图标,浅/深主题各自得体(Spotify 灰底
@@ -593,7 +594,7 @@ private fun HeartPlaylistRow(
                 Modifier
                     .size(112.dp)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(ArtworkShape),
         )
         Column(
             modifier =

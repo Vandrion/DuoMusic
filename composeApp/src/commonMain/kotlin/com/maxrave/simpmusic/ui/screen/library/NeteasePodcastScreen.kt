@@ -62,6 +62,8 @@ import com.maxrave.simpmusic.ui.navigation.destination.home.NeteaseRadioListDest
 import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.NeteasePodcastCategoryDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.NeteaseRadioDetailDestination
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
+import com.maxrave.simpmusic.expect.ui.VerticalScrollBar
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.extension.formatTimeAgo
 import com.maxrave.simpmusic.extension.scrollReportingEffect
@@ -361,6 +363,11 @@ fun NeteasePodcastScreen(
                 EndOfPage()
             }
         }
+        // 桌面滚动条(Android actual 为 no-op)
+        VerticalScrollBar(
+            scrollState = listState,
+            modifier = Modifier.matchParentSize(),
+        )
     }
 }
 
@@ -443,7 +450,7 @@ internal fun NeteaseDjRadioCard(
                 contentScale = ContentScale.Crop,
                 modifier =
                     thumbModifier
-                        .clip(RoundedCornerShape(10.dp)),
+                        .clip(ArtworkShape),
             )
             if (rank != null) {
                 Text(
@@ -531,7 +538,7 @@ internal fun NeteaseProgramRow(
             modifier =
                 Modifier
                     .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(ArtworkShape),
         )
         Column(
             modifier =

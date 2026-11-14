@@ -56,6 +56,7 @@ import com.maxrave.simpmusic.ui.icon.KeyboardArrowDown
 import com.maxrave.simpmusic.ui.icon.SortAscending
 import com.maxrave.simpmusic.ui.icon.SortDescending
 import com.maxrave.simpmusic.ui.icon.SimpIcons
+import com.maxrave.simpmusic.ui.theme.ArtworkShape
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.ui.utils.formatCompactCount
 import com.maxrave.simpmusic.viewModel.NeteaseRadioDetailViewModel
@@ -298,7 +299,7 @@ private fun RadioHeader(
             modifier =
                 Modifier
                     .size(112.dp)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(ArtworkShape),
         )
         Column(
             Modifier
