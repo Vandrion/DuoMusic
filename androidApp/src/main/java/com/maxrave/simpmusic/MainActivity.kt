@@ -307,7 +307,13 @@ class MainActivity : AppCompatActivity() {
         if (shouldStopMusicService && shouldUnbind && isFinishing) {
             viewModel.isServiceRunning = false
         }
-        unloadKoinModules(viewModelModule)
+        // Fork(2026-11-15 崩溃复盘): 原上游在这里无条件 unloadKoinModules(viewModelModule)——
+        // Koin 是进程级注册表,activity 销毁不该卸载全局模块。launchMode=singleTask 的 app 在
+        // 外部 am start(deeplink/分享链接)可并存两个实例:旧实例晚到的 onDestroy(unload)落在
+        // 新实例 onCreate 的 reload 之后,注册表落成空窗,任何活着的组合解析任何 VM 即
+        // NoDefinitionFoundException 崩溃页(实测撞过:deeplink 重建后点迷你条开播放页,
+        // koinInject<SharedViewModel> 抛错)。onCreate 的 unload+reload 同线程背靠背、先于
+        // setContent,保留不动(上游刷新 VM 语义);此处的卸载只会留空窗,删。
         super.onDestroy()
         Logger.d("MainActivity", "onDestroy: ")
     }
