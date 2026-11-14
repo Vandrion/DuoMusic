@@ -1089,6 +1089,8 @@ fun NowPlayingScreenContent(
             youTubeDislike =
                 when {
                     !isUserLoggedIn -> null
+                    // Fork: 网易歌/MV 无"踩"(RYD 只对 YT 视频)——整行隐藏,防数字 id 误进 YT 点踩 API
+                    nowPlayingVideoId == null || nowPlayingVideoId.toLongOrNull() != null || isNeteaseMv -> null
                     likeStatus == YouTubeLikeStatus.DISLIKE -> YouTubeDislikeState.DISLIKED
                     isDislikePending -> YouTubeDislikeState.DISLIKING
                     else -> YouTubeDislikeState.DISLIKE

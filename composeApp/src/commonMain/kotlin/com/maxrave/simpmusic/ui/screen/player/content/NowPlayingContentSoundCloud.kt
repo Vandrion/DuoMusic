@@ -415,9 +415,13 @@ private fun NowPlayingSoundCloudLayout(
                     HorizontalPager(
                         state = state.artworkPagerState,
                         // Record the visible pager once, not each neighboring page, for the glass.
-                        modifier = artworkModifier.fillMaxSize(),
+                        // Fork(经典/M3E/AM 同款): 手势全权交给 artworkDragPager——跟手拖动、
+                        // 松手过阈发一次切歌请求再 240ms 落位动画。此前 userScrollEnabled=true
+                        // 但没有任何翻页→切歌的接线:滑动只翻封面,歌曲原地不动,壳层下一次
+                        // 纠偏再把 pager 拉回播放中的歌=用户看到的"封面切了歌没切+来回跳"。
+                        modifier = artworkModifier.fillMaxSize().artworkDragPager(state, actions),
                         beyondViewportPageCount = 1,
-                        userScrollEnabled = state.controllerState.repeatState !is RepeatState.One && state.artworkQueue.isNotEmpty(),
+                        userScrollEnabled = false,
                         key = { page ->
                             state.artworkPageKeys.getOrNull(page)
                                 ?: ("soundCloudArtwork_" + state.artworkQueue.getOrNull(page)?.videoId.orEmpty() + "_$page")
@@ -685,7 +689,12 @@ private fun NowPlayingSoundCloudLayout(
                 CommentBox(
                     backdrop = backdrop,
                     position = position,
-                    onWriteComment = actions.onWriteComment,
+                    // Fork: 网易歌无"时刻评论"(数字 id 拉不到 YT timed comments,带时间戳草稿
+                    // 开 YT sheet 恒"评论已关闭")——写评论框与评论图标钮同款路由,走 M7 sheet;
+                    // YT 歌维持带时间戳草稿开 YT 评论 sheet
+                    onWriteComment = { draft ->
+                        if (state.isNeteaseSong) actions.onShowNeteaseComments() else actions.onWriteComment(draft)
+                    },
                     modifier = Modifier.padding(horizontal = CARD_PADDING),
                 )
             }
@@ -824,9 +833,11 @@ private fun SoundCloudArtwork(
     val canvas = state.screenData.canvasData.takeIf { isCurrentPage }
     val showCurrentVideo = showVideo && isCurrentPage
     // Fork(经典主题 55b58ac6 同款): 每页永远画自己队列行的封面——URL 不随 isCurrentPage 翻转,
-    // 翻页落位后 AsyncImage 不重建,消除"切歌封面跳一下"。调色板馈送仍只由当前页上报。
+    // 翻页落位后 painter 不重建,消除"切歌封面跳一下"。URL 走 playerArtworkUrl(升 1080 档,
+    // 详情页头图/经典主题同款;SoundCloud 大图槽位近全屏,544/500 小档上采样发糊)。
+    // 调色板馈送仍只由当前页上报。
     val thumbnailUrl =
-        page?.let { state.artworkQueue.getOrNull(it) }?.thumbnails?.maxByOrNull { it.width * it.height }?.url
+        page?.let { state.artworkQueue.getOrNull(it) }.playerArtworkUrl()
             ?: state.screenData.thumbnailURL
     Box(modifier = modifier.fillMaxSize()) {
         var canvasReady by remember(canvas?.url) { mutableStateOf(false) }
@@ -844,14 +855,22 @@ private fun SoundCloudArtwork(
             label = "soundCloudCover",
         )
         var artworkUrl by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl) }
+        // Fork(PlayerPageArtwork 同款 coil3 坑): request 必须 remember——coil3 对 ImageRequest
+        // 的模型相等性是引用比较,每次重组新建实例会被读作模型变化而重启 painter:已解码
+        // 封面先落一帧空白再 crossfade 550ms,正是滑动落位"封面跳一下"的最后一层。
+        // 同 URL 进同实例出 → painter 不重启,crossfade 只在真实首次加载时跑。
+        val platformContext = LocalPlatformContext.current
         val request =
-            ImageRequest
-                .Builder(LocalPlatformContext.current)
-                .data(artworkUrl)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .diskCacheKey(artworkUrl + "BIGGER")
-                .crossfade(550)
-                .build()
+            remember(artworkUrl, platformContext) {
+                ImageRequest
+                    .Builder(platformContext)
+                    .data(artworkUrl)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .diskCacheKey(artworkUrl)
+                    .size(1080)
+                    .crossfade(550)
+                    .build()
+            }
         val painter = rememberAsyncImagePainter(request)
         Image(
             painter = painter,
