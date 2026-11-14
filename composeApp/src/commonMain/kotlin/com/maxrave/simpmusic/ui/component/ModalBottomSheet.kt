@@ -266,9 +266,11 @@ import simpmusic.composeapp.generated.resources.playlist_tags_limit
 import simpmusic.composeapp.generated.resources.remove_from_playlist
 import simpmusic.composeapp.generated.resources.unsubscribe_from_library
 import simpmusic.composeapp.generated.resources.netease_delete_playlist
-import simpmusic.composeapp.generated.resources.cancel_download_title
+import simpmusic.composeapp.generated.resources.cancel_download
 import simpmusic.composeapp.generated.resources.cancel_download_message
+import simpmusic.composeapp.generated.resources.cancel_download_title
 import simpmusic.composeapp.generated.resources.cancel_download_confirm
+import simpmusic.composeapp.generated.resources.download_action_redownload
 import simpmusic.composeapp.generated.resources.remove_download_title
 import simpmusic.composeapp.generated.resources.remove_download_message
 import simpmusic.composeapp.generated.resources.add_lyrics
@@ -381,8 +383,6 @@ import simpmusic.composeapp.generated.resources.plays
 import simpmusic.composeapp.generated.resources.processing
 import simpmusic.composeapp.generated.resources.queue
 import simpmusic.composeapp.generated.resources.radio
-import simpmusic.composeapp.generated.resources.remove_download
-import simpmusic.composeapp.generated.resources.remove_from_cache
 import simpmusic.composeapp.generated.resources.save
 import simpmusic.composeapp.generated.resources.save_to_local_playlist
 import simpmusic.composeapp.generated.resources.saved_to_local_playlist
@@ -2617,7 +2617,9 @@ fun NowPlayingBottomSheet(
                                 when (uiState.songUIState.downloadState) {
                                     DownloadState.STATE_NOT_DOWNLOADED -> Res.string.download
                                     DownloadState.STATE_DOWNLOADING -> Res.string.cancel_download
-                                    DownloadState.STATE_DOWNLOADED -> Res.string.remove_download
+                                    // 已下载=覆盖重新下载(2026-10 定案;真"移除下载"独立成行见下),
+                                    // 标签与动作一致,用上游 2.6.0 带来的 redownload 文案
+                                    DownloadState.STATE_DOWNLOADED -> Res.string.download_action_redownload
                                     DownloadState.STATE_PREPARING -> Res.string.cancel_download
                                     else -> Res.string.download
                                 }
