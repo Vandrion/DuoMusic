@@ -1,11 +1,6 @@
 package com.maxrave.simpmusic.ui.screen.player.content
 
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector4D
@@ -27,9 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.Velocity
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -177,61 +169,6 @@ internal fun Modifier.artworkDragPager(
     )
 }
 
-/**
- * (fix) 歌词区下拉拦截(经典/M3E 整页 verticalScroll 主题,用户 2026-11-15"歌词拉到顶
- * 继续下拉很容易关页"):列表在顶时的继续下拉**不走 nested scroll**(列表没参与滚动,
- * 无 PostScroll 可拦——nestedScroll 守卫实测零调用),是原始指针直达 sheet 的拖拽层。
- * 本拦截在内容根指针层(Main 通道,先于 sheet 的祖先 draggable)只吃"未被列表消费的
- * 向下位移":列表中部时列表先消费(positionChange=0)不误伤正常滚动;列表在顶时吃掉
- * 全部下拉=死路(iOS 同款),关页手势只剩顶部区。仅挂有整页 verticalScroll 的主题
- * (经典/M3E);SoundCloud/AM 卡片无列表,分区拦截会误伤其全卡下拉关页,不挂。
- */
-@Composable
-internal fun Modifier.lyricsZonePullGuard(
-    viewportHeightPx: () -> Int,
-    isScrolledDown: () -> Boolean,
-): Modifier {
-    val currentViewport by rememberUpdatedState(viewportHeightPx)
-    val currentScrolledDown by rememberUpdatedState(isScrolledDown)
-    // 歌词区起手标记:nested scroll 的 PostFling 通道要吃掉松手甩速——指针层已逐帧吃掉
-    // drag(sheet 拖不动),但 fling 速度沿 nested scroll 上抛,库会按速度选 Hidden 目标,
-    // confirm 的 8% 微位移线拦不住(300px 下拉甩关,实测最后一块拼图)。
-    var zoneArmed by remember { mutableStateOf(false) }
-    val flingGuard =
-        remember {
-            object : NestedScrollConnection {
-                override suspend fun onPostFling(
-                    consumed: Velocity,
-                    available: Velocity,
-                ): Velocity = if (zoneArmed && available.y > 0f) available else Velocity.Zero
-            }
-        }
-    return this
-        .nestedScroll(flingGuard)
-        .pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                val h = currentViewport()
-                // 视口高分界(调用方传 screenInfo.hPX)——本节点自身高度是整页内容高
-                // (verticalScroll 的 wrap 内容),用它会把分界点推到屏外=守卫永不触发(实测)
-                // 列表已滚离第一屏(歌词占满全屏,手指自然落在屏中部)→全屏拦;第一屏时
-                // 仅拦 65% 线以下(顶部区保留关页)。真机首版只按手指 y 分界,中部起手
-                // (y~1500<65% 线)直接放行=用户复测"还是老样子"的根因。
-                zoneArmed = h > 0 && (currentScrolledDown() || down.position.y > h * LYRICS_ZONE_FRACTION)
-                if (!zoneArmed) return@awaitEachGesture
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Main)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!change.pressed) break
-                    val dy = change.positionChange().y
-                    if (dy > 0f && !change.isConsumed) change.consume()
-                }
-            }
-        }
-}
-
-// 歌词/下方内容区起点=屏高 65% 以下;顶部 35%(标题条+封面上部)保留下拉关页
-private const val LYRICS_ZONE_FRACTION = 0.65f
 
 /** Monotonic page transition shared by transport buttons and artwork swipes. */
 internal val ArtworkPagerSnapAnimation: AnimationSpec<Float> =

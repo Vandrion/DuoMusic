@@ -30,11 +30,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -603,28 +598,9 @@ fun LyricsView(
         // list simply runs out of content and the closing lines pile up against the bottom edge,
         // so the final third of every song reads bottom-anchored instead of top-anchored.
         val tailPadding = if (appleStyle) maxHeight * 0.72f else 0.dp
-        // (fix) 歌词顶部下拉守卫(AppleMusicLyricsView 同款,用户 2026-11-15):歌词列表滚到顶
-        // 后的继续下拉,余量经 nested scroll 层层上抛(经典/M3E 歌词卡嵌在整页滚动列表里,
-        // 外层滚到顶后最终喂给 sheet 滑关)——本列表在顶时的向下余量与甩速就地全吃,
-        // sheet 收不到=关页手势只剩页面顶部非歌词区。挂在列表本体上与 SoundCloud 版同构。
-        val topPullGuard =
-            remember {
-                object : NestedScrollConnection {
-                    override fun onPostScroll(
-                        consumed: Offset,
-                        available: Offset,
-                        source: NestedScrollSource,
-                    ): Offset = if (source == NestedScrollSource.Drag && available.y > 0f) available else Offset.Zero
-
-                    override suspend fun onPostFling(
-                        consumed: Velocity,
-                        available: Velocity,
-                    ): Velocity = if (available.y > 0f) available else Velocity.Zero
-                }
-            }
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().nestedScroll(topPullGuard),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = tailPadding),
         ) {
             items(displayLines.lines.size) { index ->
