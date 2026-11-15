@@ -190,6 +190,9 @@ fun NowPlayingScreen(
     // 程序化关页标记:关页按钮走的 hideSheet() 置位,confirmValueChange 对它放行——
     // 否则 offset≈0 的程序化关闭会被"位移不足"裁决误拦。
     var programmaticHide by remember { mutableStateOf(false) }
+    // 下拉激活(拖动跟手中):拖动期间冻结重效果层(iOS 控制中心同款降级渲染——七轮封面
+    // "质量锁"同族手法)。锁外=sheet offset 流;锁窗内 sheet 不动,由 fallback 回调补。
+    var pullActive by remember { mutableStateOf(false) }
     var sheetStateRef by remember { mutableStateOf<SheetState?>(null) }
     val sheetState =
         rememberModalBottomSheetState(
@@ -212,6 +215,16 @@ fun NowPlayingScreen(
             },
         )
     sheetStateRef = sheetState
+    // 锁外下拉=sheet offset 流驱动;锁窗内 sheet 不动,由 fallback 的 onPullActive 补
+    LaunchedEffect(sheetState) {
+        snapshotFlow {
+            try {
+                sheetState.requireOffset()
+            } catch (e: IllegalStateException) {
+                0f
+            }
+        }.collect { pullActive = it > 8f }
+    }
 
     val hideSheet: () -> Unit = {
         coroutineScope.launch {
@@ -290,9 +303,11 @@ fun NowPlayingScreen(
                         sheetState = sheetState,
                         onHide = { programmaticHide = true; hideSheet() },
                         onGone = { onDismiss() },
+                        onPullActive = { active -> pullActive = active },
                     ),
         ) {
             NowPlayingScreenContent(
+                isPullingDown = pullActive,
                 sharedViewModel = sharedViewModel,
                 navController = navController,
                 isExpanded = sheetState.currentValue == SheetValue.Expanded,
@@ -323,11 +338,13 @@ private fun Modifier.earlySheetDismissFallback(
     sheetState: SheetState,
     onHide: () -> Unit,
     onGone: () -> Unit,
+    onPullActive: (Boolean) -> Unit = {},
 ): Modifier {
     val openedAt = remember { TimeSource.Monotonic.markNow() }
     val currentSheetState by rememberUpdatedState(sheetState)
     val currentHide by rememberUpdatedState(onHide)
     val currentGone by rememberUpdatedState(onGone)
+    val currentPullActive by rememberUpdatedState(onPullActive)
     var contentHeightPx by remember { mutableIntStateOf(0) }
     // 锁窗内的跟手位移:直写 state(graphicsLayer 快照读,逐帧不落重组);动画段用一次性
     // FloatAnimatable 驱动 state——restricted pointerInput scope 里不能挂起,全部走 scope.launch
@@ -339,7 +356,10 @@ private fun Modifier.earlySheetDismissFallback(
         onEnd: () -> Unit = {},
     ) {
         scope.launch {
-            FloatAnimatable(lockedPullY).animateTo(target, spec) { lockedPullY = value }
+            FloatAnimatable(lockedPullY).animateTo(target, spec) {
+                lockedPullY = value
+                currentPullActive(value > 4f && target > 4f)
+            }
             onEnd()
         }
     }
@@ -387,6 +407,7 @@ private fun Modifier.earlySheetDismissFallback(
                         pulling = true
                         change.consume()
                         lockedPullY = accY
+                        currentPullActive(accY > 4f)
                     } else if (dy < 0f && pulling) {
                         accY = (accY + dy).coerceAtLeast(0f)
                         change.consume()
@@ -410,6 +431,7 @@ private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NowPlayingScreenContent(
+    isPullingDown: Boolean = false,
     sharedViewModel: SharedViewModel = koinInject(),
     neteaseRepository: com.maxrave.data.repository.NeteaseRepositoryImpl = koinInject(),
     mediaPlayerHandler: MediaPlayerHandler = koinInject(),
@@ -978,6 +1000,7 @@ fun NowPlayingScreenContent(
             lyricsOffsetMs = lyricsOffsetMs.toLong(),
             videoAspectRatio = rememberVideoAspectRatio(MAIN_PLAYER) ?: 16f / 9,
             videoId = commentsVideoId,
+            isPullingDown = isPullingDown,
     )
     val actions =
         NowPlayingContentActions(

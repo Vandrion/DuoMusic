@@ -335,7 +335,12 @@ private fun NowPlayingSoundCloudLayout(
     }
     // Not running while a scrub settles either: it then follows the reports, so it starts again from
     // where the player actually landed instead of gliding there from where the drag began.
-    val playhead = rememberSteadyPlayhead(rawMs = timeline.current, running = isPlaying && !scrubbing && pendingSeekMs == null)
+    // 下拉跟手期间暂停波形滚动(质量锁同族):全宽 Canvas 每帧重绘是拖动掉帧的第二大头
+    val playhead =
+        rememberSteadyPlayhead(
+            rawMs = timeline.current,
+            running = isPlaying && !scrubbing && pendingSeekMs == null && !state.isPullingDown,
+        )
     // Read where it is used (the waveform draws it every frame) rather than here, so a moving
     // playhead redraws the waveform without recomposing the whole card each frame.
     val position = remember { { if (scrubbing) scrubMs else pendingSeekMs ?: playhead.value } }
@@ -947,16 +952,27 @@ private fun SoundCloudArtwork(
                     }.blur(LOWER_BLUR)
             }
         // 模糊副本=封面背景层,常驻不淡出(240px 小图,严格无 crossfade;视频/画布盖上来时
-        // 它在底下继续铺满,下滑露出的是封面背景而非黑底)
-        AsyncImage(
-            model =
-                remember(artworkUrl, platformContext) {
-                    ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
-                },
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().then(lowerBlur),
-        )
+        // 它在底下继续铺满,下滑露出的是封面背景而非黑底)。
+        // 拖动跟手期间(质量锁,七轮封面同族):blur RenderEffect+offscreen 层随整层位移每帧
+        // 重算=下拉掉帧主源——拖动时换成纯 scrim 底(视觉在页面移动中无感知),松手即恢复。
+        if (state.isPullingDown) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = LOWER_SCRIM_AT_BOTTOM)),
+            )
+        } else {
+            AsyncImage(
+                model =
+                    remember(artworkUrl, platformContext) {
+                        ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
+                    },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().then(lowerBlur),
+            )
+        }
         if (showCurrentVideo) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
                 // A frame of the video's own shape, as M3 Expressive and the Apple Music style give

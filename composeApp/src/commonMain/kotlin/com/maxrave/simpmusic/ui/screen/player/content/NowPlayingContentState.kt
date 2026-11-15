@@ -254,6 +254,9 @@ class NowPlayingContentState(
     val shouldShowVideo: Boolean,
     /** 当前歌曲是否来自网易；用于元数据加载前也能立即应用源特有 UI 规则。 */
     val isNeteaseSong: Boolean,
+    /** 下拉跟手激活中(壳层维护):拖动期间冻结重效果层(模糊/波形滚动)——iOS 控制中心
+     *  同款降级渲染,拖动是低频交互,视觉降级无感知,换每帧满帧。 */
+    val isPullingDown: Boolean = false,
     /** 播客节目(队列指纹判定):歌曲红心对节目无效(524),三主题红心隐藏 */
     val isPodcastSong: Boolean = false,
     /** 网易 MV(媒体 id=NETEASE_MV_ 哨兵):MV 不进歌单(官方同款,歌单只装歌曲)——
