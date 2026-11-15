@@ -79,6 +79,7 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
+import com.maxrave.simpmusic.expect.HapticFeedback
 import com.maxrave.simpmusic.expect.ui.rememberVideoAspectRatio
 import com.maxrave.simpmusic.extension.GradientAngle
 import com.maxrave.simpmusic.extension.GradientOffset
@@ -197,13 +198,12 @@ fun NowPlayingScreen(
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
-        // (fix) 打开动画未稳住时的下滑兜底——见 earlySheetDismissFallback 的说明。包在
-        // 内容外层(Main 通道旁观),不影响任何子组件手势。
+        // (fix) 下滑关闭蓄力门——见 sheetDismissGate 的说明。包在内容外层,不影响任何子组件手势。
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .earlySheetDismissFallback(
+                    .sheetDismissGate(
                         sheetState = sheetState,
                         onDismissNow = { onDismiss() },
                     ),
@@ -222,65 +222,81 @@ fun NowPlayingScreen(
 }
 
 /**
- * (fix) 从迷你条打开播放页后,第一次下滑关闭经常没反应。
+ * (fix) 播放页"指尖轻碰就整页关掉"与"打开后第一次下滑没反应"两个老毛病,一个观察器收编。
  *
- * material3(JetBrains 1.12)ModalBottomSheet 的打开动画仍在跑时,AnchoredDraggable 的拖拽
- * 互斥锁被 animateTo 持有,用户下滑被整体吞掉约 0.6~1s——动画视觉上早已到位,内部却还没
- * 结束(模拟器实测:窗口内点击/暂停全部正常、竖直拖拽零响应,0.6s 必失效/1.0s 恢复;与
- * Google issue tracker #481364105"展开后 ~0.5-1s 不识别滑动手势"同族)。库不可改,这里在
- * 内容层旁观兜底:
- * - 仅在兜底窗内(动画仍在跑,或打开后未满 800ms——后者盖住动画尚未 START 的那几帧)才
- *   累计"未被任何子组件消费"
- *   的向下位移(Main 通道,子组件已先处理;positionChange 对已消费变更为 0,列表滚动/滑条/
- *   横滑封面 pager 的位移天然不累计);
- * - 越过阈值即刻直接 onDismiss 关页(与点遮罩同款瞬时语义;不走 sheetState.hide()——它同样
- *   要排队等动画锁释放,反而拖出半秒延迟);
- * - 动画一结束(且兜底窗已过)立刻停手退位,正常跟手拖拽(拖一半松手弹回)不受任何影响。
- *   本观察器不消费任何事件。
+ * 病根有二:
+ * 1. material3(JetBrains 1.12)ModalBottomSheet 的松手判定对"速度"极敏感——全屏 sheet 锚点只有
+ *    Expanded/Hidden 两档,小幅快滑(几十 px)也轻易越过速度阈值直接 Hidden=整页消失;
+ * 2. 打开动画未稳住时 AnchoredDraggable 的拖拽互斥锁被 animateTo 持有,下滑被整体吞掉
+ *    ~0.6-1s(Google issuetracker #481364105 同族;原 earlySheetDismissFallback 只治这一段)。
+ *
+ * 常驻蓄力门(Main 通道,子组件先处理):未被任何子组件消费的向下位移在达到蓄力阈值前
+ * 一律消费掉——sheet 全程不跟手,轻碰/误滑在松手时什么都不发生;跨过阈值才算"有意下滑":
+ * - 动画锁窗内(动画仍在跑,或打开后未满 800ms——后者盖住动画尚未 START 的那几帧):sheet
+ *   仍被锁,交给它也会被吞,跨阈值即刻直接 onDismiss(与点遮罩同款瞬时语义;不走
+ *   sheetState.hide()——它同样要排队等锁,反而拖出半秒延迟);
+ * - 锁窗外:停止消费、把手还回 sheet——后续位移由 sheet 自然跟手,松手交回库层按位移/
+ *   速度判定(此时手势必然已超过蓄力阈值,微滑永远到不了库层)。
+ * 横滑组件(封面 pager/滑条/列表滚动)先消费各自位移,positionChange 对已消费变更为 0,
+ * 天然不计入蓄力;本观察器不消费任何子组件已处理的事件,只吃"没人要的竖直位移"。
  */
 @Composable
-private fun Modifier.earlySheetDismissFallback(
+private fun Modifier.sheetDismissGate(
     sheetState: SheetState,
     onDismissNow: () -> Unit,
 ): Modifier {
     val openedAt = remember { TimeSource.Monotonic.markNow() }
     val currentSheetState by rememberUpdatedState(sheetState)
     val currentDismiss by rememberUpdatedState(onDismissNow)
+    val thresholdPx = with(LocalDensity.current) { SHEET_DISMISS_GATE_THRESHOLD.toPx() }
     return this.pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val pointerId = down.id
             var accY = 0f
-            val thresholdPx = EARLY_SHEET_DISMISS_THRESHOLD.toPx()
+            var handedOff = false
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Main)
                 val change = event.changes.firstOrNull { it.id == pointerId } ?: break
                 if (!change.pressed) break
-                // 武装条件二选一:动画仍在跑(=库在吞手势),或打开后还没满兜底窗
-                // (动画可能还没 START——down 落在 animateTo 启动前的那几帧,随后动画照样
-                // 会锁住并吞掉手势;只盯 isAnimationRunning 会在这一小段误退位)。
-                val animating = currentSheetState.isAnimationRunning
-                val inWindow = openedAt.elapsedNow() < EARLY_SHEET_DISMISS_WINDOW
-                if (!animating && !inWindow) break
+                if (handedOff) continue
                 val dy = change.positionChange().y
                 if (dy > 0f) {
                     accY += dy
                     if (accY >= thresholdPx) {
-                        Logger.w(TAG, "Early sheet dismiss fallback fired (accY=${accY.toInt()}px)")
-                        currentDismiss()
-                        break
+                        // 跨阈值=有意下滑:先给一次确认震感(armed 单次,同 artworkDragPager 配方)
+                        HapticFeedback.tap()
+                        val locked =
+                            currentSheetState.isAnimationRunning ||
+                                openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
+                        if (locked) {
+                            Logger.d(TAG, "Sheet dismiss gate closed directly (accY=${accY.toInt()}px, locked)")
+                            currentDismiss()
+                            break
+                        } else {
+                            // 锁窗外:停止消费,sheet 从这里开始跟手,松手交回库层判定
+                            handedOff = true
+                        }
+                    } else {
+                        // 蓄力中:吃掉竖直位移,sheet 不跟手(轻滑保护)
+                        change.consume()
                     }
+                } else if (dy < 0f && accY > 0f) {
+                    // 蓄力中向上拖=取消意图,清零重来
+                    accY = 0f
+                    change.consume()
                 }
             }
         }
     }
 }
 
-// 一记有意的下滑(非误触)在 56dp(≈147px@2.625x)以上;列表滚动被消费不计入。
-private val EARLY_SHEET_DISMISS_THRESHOLD = 56.dp
+// 蓄力阈值:一记有意的下滑(≈210px@2.625x);更短的位移一律读作误触。列表滚动/横滑被
+// 子组件消费,不计入。
+private val SHEET_DISMISS_GATE_THRESHOLD = 80.dp
 
-// 打开后的兜底窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
-private val EARLY_SHEET_DISMISS_WINDOW = 800.milliseconds
+// 打开后的动画锁窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
+private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
