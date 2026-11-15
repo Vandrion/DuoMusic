@@ -863,14 +863,8 @@ private fun SoundCloudArtwork(
             neighborReady = true
         }
     }
-    // 全屏 32dp blur 层(RenderEffect)是进场动画帧的大头 GPU 开销:延迟到 sheet 落定后再
-    // 挂载,进场期该层不存在;blur+scrim 遮罩下晚 400ms 出现不可感知。
-    var lowerBlurReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        delay(400)
-        lowerBlurReady = true
-    }
+    // Fork(用户 2026-11-15):模糊副本常驻打底——它就是"封面背景",封面本体加载前由它
+    // 铺满消除黑相位;crossfade 已去、静态层一次录制,进场成本可接受。
     Box(modifier = modifier.fillMaxSize()) {
         var canvasReady by remember(canvas?.url) { mutableStateOf(false) }
         if (canvas != null) {
@@ -949,18 +943,17 @@ private fun SoundCloudArtwork(
                         )
                     }.blur(LOWER_BLUR)
             }
-        // 模糊副本延迟挂载(进场期该层不存在):240px 小图请求,严格无 crossfade。
-        if (lowerBlurReady) {
-            AsyncImage(
-                model =
-                    remember(artworkUrl, platformContext) {
-                        ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
-                    },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().alpha(coverAlpha).then(lowerBlur),
-            )
-        }
+        // 模糊副本=封面背景层,常驻不淡出(240px 小图,严格无 crossfade;视频/画布盖上来时
+        // 它在底下继续铺满,下滑露出的是封面背景而非黑底)
+        AsyncImage(
+            model =
+                remember(artworkUrl, platformContext) {
+                    ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
+                },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().then(lowerBlur),
+        )
         if (showCurrentVideo) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
                 // A frame of the video's own shape, as M3 Expressive and the Apple Music style give
@@ -1270,7 +1263,8 @@ private fun compact(
 
 // Read off SoundCloud's own player (Mobbin, iOS 2024, and the owner's iOS captures), converted from
 // its 390pt-wide frame.
-private val CARD_SHAPE = RoundedCornerShape(20.dp)
+// Fork(用户 2026-11-15):卡片铺满——圆角四角露出深底读作"黑屏",封面直接铺满整个卡区。
+private val CARD_SHAPE = RoundedCornerShape(0.dp)
 private val CARD_PADDING = 16.dp
 private const val LABELS_WIDTH_FRACTION = 0.78f
 private const val TITLE_MAX_LINES = 3

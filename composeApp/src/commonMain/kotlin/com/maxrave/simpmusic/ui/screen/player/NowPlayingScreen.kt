@@ -29,6 +29,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -38,6 +39,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
@@ -244,6 +246,10 @@ fun NowPlayingScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    // (fix) 下拉跟手的垫底色:锁窗内 translationY 移动的是内容层(modifier 链上
+                    // graphicsLayer 之后的绘制),此 background 在 layer 之外固定不动——内容层
+                    // 拉走时露出这层主题底色,而不是 sheet 的纯黑容器(containerColor=Black)。
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
                     .onSizeChanged { contentHeightPx = it.height }
                     // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
                     // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet
