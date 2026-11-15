@@ -197,6 +197,8 @@ fun NowPlayingScreen(
     // 下拉激活(拖动跟手中):拖动期间冻结重效果层(iOS 控制中心同款降级渲染——七轮封面
     // "质量锁"同族手法)。锁外=sheet offset 流;锁窗内 sheet 不动,由 fallback 回调补。
     var pullActive by remember { mutableStateOf(false) }
+    // 锁窗内上滑→列表滚动转发器(Content 拿到 mainScrollState 后注册)
+    var upDragSink by remember { mutableStateOf<((Float) -> Unit)?>(null) }
     var sheetStateRef by remember { mutableStateOf<SheetState?>(null) }
     val sheetState =
         rememberModalBottomSheetState(
@@ -308,10 +310,12 @@ fun NowPlayingScreen(
                         onHide = { programmaticHide = true; hideSheet() },
                         onGone = { onDismiss() },
                         onPullActive = { active -> pullActive = active },
+                        onUpDrag = upDragSink,
                     ),
         ) {
             NowPlayingScreenContent(
                 isPullingDown = pullActive,
+                onUpDragSinkReady = { upDragSink = it },
                 sharedViewModel = sharedViewModel,
                 navController = navController,
                 isExpanded = sheetState.currentValue == SheetValue.Expanded,
@@ -343,12 +347,17 @@ private fun Modifier.earlySheetDismissFallback(
     onHide: () -> Unit,
     onGone: () -> Unit,
     onPullActive: (Boolean) -> Unit = {},
+    /** 锁窗内上滑转发(经典/M3E 整页列表):dy<0 原样转发 dispatchRawDelta 真滚列表——
+     *  库动画锁(~1s)阻塞一切嵌套分发,列表自己的手势也被吞,不转发=开页立即上滑失灵
+     *  (真机实测 0.8s 仍失灵/1.2s 恢复)。null=主题无可滚列表,上滑交还。 */
+    onUpDrag: ((Float) -> Unit)? = null,
 ): Modifier {
     val openedAt = remember { TimeSource.Monotonic.markNow() }
     val currentSheetState by rememberUpdatedState(sheetState)
     val currentHide by rememberUpdatedState(onHide)
     val currentGone by rememberUpdatedState(onGone)
     val currentPullActive by rememberUpdatedState(onPullActive)
+    val currentUpDrag by rememberUpdatedState(onUpDrag)
     var contentHeightPx by remember { mutableIntStateOf(0) }
     // 锁窗内的跟手位移:直写 state(graphicsLayer 快照读,逐帧不落重组);动画段用一次性
     // FloatAnimatable 驱动 state——restricted pointerInput scope 里不能挂起,全部走 scope.launch
@@ -405,10 +414,23 @@ private fun Modifier.earlySheetDismissFallback(
                         if (!animating && !inWindow) break
                     }
                     val dy = change.positionChange().y
+                    // 纯上滑(未进入下拉):锁窗内库锁阻塞嵌套分发,交也会被吞——转发列表
+                    // 真滚(经典/M3E,dispatchRawDelta 公开 API);无列表主题上滑无语义,交还。
+                    if (dy < 0f && !pulling) {
+                        val sink = currentUpDrag
+                        if (sink != null) {
+                            sink(dy)
+                            change.consume()
+                        } else {
+                            break
+                        }
+                    }
                     if (dy > 0f) {
                         accY += dy
-                        // 锁窗内跟手:内容层位移 1:1(消费,防锁中途释放后库双重接管)
+                        // 下拉启动门槛(18px):起手抖动不足以上膛,跨过后才接管跟手
+                        if (!pulling && accY < LOCK_PULL_START_SLOP) return@awaitEachGesture
                         pulling = true
+                        // 锁窗内跟手:内容层位移 1:1(消费,防锁中途释放后库双重接管)
                         change.consume()
                         lockedPullY = accY
                         currentPullActive(accY > 4f)
@@ -425,17 +447,23 @@ private fun Modifier.earlySheetDismissFallback(
 // 锁窗内自绘关闭线=内容高 15%(开页后快速下拉关页的顺手距离)。
 private const val SHEET_DISMISS_FRACTION = 0.15f
 
+// 锁窗下拉启动门槛(px):起手抖动(几像素向下)不捕获,防误吞上滑手势的真机实测坑
+private const val LOCK_PULL_START_SLOP = 18f
+
 // confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
 // "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
 private const val SHEET_DISMISS_MIN_FRACTION = 0.08f
 
-// 打开后的动画锁窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
-private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
+// 打开后的动画锁窗:盖住"动画未启动"的几帧(动画本体 ~400ms 由 isAnimationRunning 覆盖)。
+// 曾取 800ms——真机"开页立即上滑失灵第二次才行"反馈后收紧:库动画锁会阻塞嵌套滚动
+// 分发,窗越长撞上滑/其它手势的面越大;450ms 是动画时长+边界帧的最小覆盖。
+private val SHEET_DISMISS_LOCK_WINDOW = 450.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NowPlayingScreenContent(
     isPullingDown: Boolean = false,
+    onUpDragSinkReady: (((Float) -> Unit)?) -> Unit = {},
     sharedViewModel: SharedViewModel = koinInject(),
     neteaseRepository: com.maxrave.data.repository.NeteaseRepositoryImpl = koinInject(),
     mediaPlayerHandler: MediaPlayerHandler = koinInject(),
@@ -1006,6 +1034,10 @@ fun NowPlayingScreenContent(
             videoId = commentsVideoId,
             isPullingDown = isPullingDown,
     )
+    // 锁窗内上滑转发注册:把整页列表的 dispatchRawDelta 交上去(dy 取反=手指上移列表下滚)
+    LaunchedEffect(state) {
+        onUpDragSinkReady { delta -> state.mainScrollState.dispatchRawDelta(-delta) }
+    }
     val actions =
         NowPlayingContentActions(
             onUIEvent = { sharedViewModel.onUIEvent(it) },
