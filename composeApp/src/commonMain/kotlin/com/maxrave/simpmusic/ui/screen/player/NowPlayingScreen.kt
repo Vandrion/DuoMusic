@@ -3,20 +3,25 @@
 package com.maxrave.simpmusic.ui.screen.player
 
 import androidx.compose.animation.Animatable
-import simpmusic.composeapp.generated.resources.Res
-import org.jetbrains.compose.resources.stringResource
-import simpmusic.composeapp.generated.resources.cloud_comments_unavailable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable as FloatAnimatable
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import com.maxrave.simpmusic.expect.HapticFeedback
+import org.jetbrains.compose.resources.stringResource
+import simpmusic.composeapp.generated.resources.Res
+import simpmusic.composeapp.generated.resources.cloud_comments_unavailable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -42,6 +47,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -54,10 +60,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -184,18 +192,20 @@ fun NowPlayingScreen(
     val sheetState =
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true,
-            // (fix) 下滑关闭位移裁决——社区标准解法(confirmValueChange=库的官方拦截点):
-            // sheet 原生 1:1 跟手、原生弹回,我们只在"松手要滑向 Hidden"那一刻按位移裁决:
-            // 拉过内容高 20% 放行关闭,否则否决弹回。速度不参与(material3 的低速阈值正是
-            // "轻滑一下就整页消失"的根源)。程序化关闭(按钮/返回)一律放行。
+            // (fix) 下滑关闭裁决——社区标准解法(confirmValueChange=库的官方拦截点):
+            // sheet 原生 1:1 跟手、原生弹回,松手目标由库自己按"位移过半屏或速度"选定——
+            // 快甩/大幅下拉关页是库的原生行为,这里只 veto"位移极小的纯轻碰擦滑"(库的速度
+            // 阈值过敏正是老毛病"指尖轻碰就整页消失"的根源):库决定去 Hidden 时采样 offset
+            // 不足内容高 8%(~4mm,任何有意的滑动都远超)才否决。程序化关闭一律放行。
             confirmValueChange = { target ->
                 if (target != SheetValue.Hidden) {
                     true
                 } else {
-                    // 位移单规则:拉过内容高 20% 才放行;快甩中途采样的 offset 偏小会被拦
-                    // (可预期:轻甩/误甩绝不关,明确的拉距/按钮/BACK 才关)
                     val h = contentHeightPx
-                    programmaticHide || h <= 0 || (sheetStateRef?.requireOffset() ?: 0f) >= h / 5f
+                    val off = sheetStateRef?.requireOffset() ?: 0f
+                    val allow = programmaticHide || h <= 0 || off >= h * SHEET_DISMISS_MIN_FRACTION
+                    if (!allow) Logger.w(TAG, "Confirm veto: off=${off.toInt()}px")
+                    allow
                 }
             },
         )
@@ -235,6 +245,38 @@ fun NowPlayingScreen(
                 Modifier
                     .fillMaxSize()
                     .onSizeChanged { contentHeightPx = it.height }
+                    // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
+                    // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet
+                    // 实时 offset 判定——veto 线(SHEET_DISMISS_MIN_FRACTION)之上的拉距松手
+                    // 即关,预告线取同一值。
+                    .pointerInput(sheetState, contentHeightPx) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var hapticArmed = true
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val h = contentHeightPx
+                                if (h > 0) {
+                                    val off =
+                                        try {
+                                            sheetState.requireOffset()
+                                        } catch (e: IllegalStateException) {
+                                            null
+                                        }
+                                    if (off != null) {
+                                        if (hapticArmed && off >= h * SHEET_DISMISS_MIN_FRACTION) {
+                                            hapticArmed = false
+                                            HapticFeedback.tap()
+                                        } else if (!hapticArmed && off < h * SHEET_DISMISS_MIN_FRACTION) {
+                                            hapticArmed = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // (fix) 打开动画未稳住的 ~0.6-1s 里 AnchoredDraggable 的拖拽互斥锁被
                     // animateTo 持有,下滑手势被库整体吞掉(Google issuetracker #481364105 同族,
                     // 2026-10-03 实测确认)。锁窗内旁观未消费向下位移,过阈值直接 hideSheet()
@@ -242,6 +284,7 @@ fun NowPlayingScreen(
                     .earlySheetDismissFallback(
                         sheetState = sheetState,
                         onHide = { programmaticHide = true; hideSheet() },
+                        onGone = { onDismiss() },
                     ),
         ) {
             NowPlayingScreenContent(
@@ -258,54 +301,103 @@ fun NowPlayingScreen(
 }
 
 /**
- * (fix) 打开动画未稳住时的下滑兜底——只覆盖锁窗,稳态手势完全交还库层。
+ * (fix) 打开动画未稳住时的下滑兜底——锁窗内内容层自己跟手,锁一释放立即交还库层。
  *
  * material3(JetBrains 1.12)ModalBottomSheet 的打开动画仍在跑时,AnchoredDraggable 的拖拽
  * 互斥锁被 animateTo 持有,用户下滑被整体吞掉约 0.6~1s(Google issuetracker #481364105
- * 同族,2026-10-03 模拟器实测确认)。锁窗内(Main 通道,旁观不消费)累计未消费向下位移,
- * 过内容高 20% 即 onHide()——hideSheet 排队等锁后自然动画关页。锁窗外立即退位,
- * 稳态的跟手/弹回/关闭全部由库自己处理;dismiss 的位移裁决在 confirmValueChange。
+ * 同族;真机体感="第一次下滑不跟手,再滑一次才跟手"——第一次撞锁窗,第二次锁已释放)。
+ *
+ * 锁窗内(动画仍在跑,或打开未满 [SHEET_DISMISS_LOCK_WINDOW]):库拖不动 sheet,内容层用
+ * translationY 1:1 跟手(消费位移,防锁中途释放后库双重接管);松手按同一关闭线裁决:
+ * 过 [SHEET_DISMISS_FRACTION] 内容层自己滑出屏+直接出栈,否则 spring 弹回;拖动中锁释放
+ * 也弹回退位。锁窗外(手势开始时锁已释放)完全不干预——稳态的跟手/弹回/关闭全由库处理,
+ * dismiss 的位移/速度裁决在 confirmValueChange。
  */
 @Composable
 private fun Modifier.earlySheetDismissFallback(
     sheetState: SheetState,
     onHide: () -> Unit,
+    onGone: () -> Unit,
 ): Modifier {
     val openedAt = remember { TimeSource.Monotonic.markNow() }
     val currentSheetState by rememberUpdatedState(sheetState)
     val currentHide by rememberUpdatedState(onHide)
+    val currentGone by rememberUpdatedState(onGone)
     var contentHeightPx by remember { mutableIntStateOf(0) }
+    // 锁窗内的跟手位移:直写 state(graphicsLayer 快照读,逐帧不落重组);动画段用一次性
+    // FloatAnimatable 驱动 state——restricted pointerInput scope 里不能挂起,全部走 scope.launch
+    var lockedPullY by remember { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
+    fun animatePullTo(
+        target: Float,
+        spec: AnimationSpec<Float>,
+        onEnd: () -> Unit = {},
+    ) {
+        scope.launch {
+            FloatAnimatable(lockedPullY).animateTo(target, spec) { lockedPullY = value }
+            onEnd()
+        }
+    }
     return this
         .onSizeChanged { contentHeightPx = it.height }
+        .graphicsLayer { translationY = lockedPullY }
         .pointerInput(Unit) {
             awaitEachGesture {
                 val contentH = contentHeightPx
                 if (contentH <= 0) return@awaitEachGesture
-                val thresholdPx = contentH / 5f
+                val thresholdPx = contentH * SHEET_DISMISS_FRACTION
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val pointerId = down.id
                 var accY = 0f
+                var pulling = false
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
                     val change = event.changes.firstOrNull { it.id == pointerId } ?: break
-                    if (!change.pressed) break
-                    // 只武装到锁窗结束(动画仍在跑,或打开未满 800ms——后者盖住动画尚未 START 的几帧)
-                    val animating = currentSheetState.isAnimationRunning
-                    val inWindow = openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
-                    if (!animating && !inWindow) break
+                    if (!change.pressed) {
+                        // 松手:过线滑出+出栈,否则弹回
+                        if (pulling) {
+                            if (accY >= thresholdPx) {
+                                Logger.w(TAG, "Locked-window pull dismissed (accY=${accY.toInt()}px)")
+                                HapticFeedback.tap()
+                                animatePullTo(contentH.toFloat(), tween(200, easing = LinearOutSlowInEasing)) { currentGone() }
+                            } else {
+                                animatePullTo(0f, spring(dampingRatio = 0.75f, stiffness = 380f))
+                            }
+                        }
+                        break
+                    }
+                    // 只武装到锁窗结束(动画仍在跑,或打开未满 800ms——后者盖住动画尚未 START 的几帧)。
+                    // 已在拉的手势中途锁释放不退位:位移一直被本观察器消费(库收不到,无双动),
+                    // translation 继续跟手到松手统一裁决——中途退位会把已拉的距离丢掉(实测 500px
+                    // 白拉弹回)。锁窗外新起的手势由这里的起始检查退位,稳态交还库层。
+                    if (!pulling) {
+                        val animating = currentSheetState.isAnimationRunning
+                        val inWindow = openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
+                        if (!animating && !inWindow) break
+                    }
                     val dy = change.positionChange().y
                     if (dy > 0f) {
                         accY += dy
-                        if (accY >= thresholdPx) {
-                            Logger.w(TAG, "Early sheet dismiss fallback fired (accY=${accY.toInt()}px)")
-                            currentHide()
-                            break
-                        }
+                        // 锁窗内跟手:内容层位移 1:1(消费,防锁中途释放后库双重接管)
+                        pulling = true
+                        change.consume()
+                        lockedPullY = accY
+                    } else if (dy < 0f && pulling) {
+                        accY = (accY + dy).coerceAtLeast(0f)
+                        change.consume()
+                        lockedPullY = accY
                     }
                 }
             }
         }
 }
+
+// 锁窗内自绘关闭线=内容高 15%(开页后快速下拉关页的顺手距离)。
+private const val SHEET_DISMISS_FRACTION = 0.15f
+
+// confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
+// "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
+private const val SHEET_DISMISS_MIN_FRACTION = 0.08f
 
 // 打开后的动画锁窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
 private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
