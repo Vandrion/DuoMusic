@@ -956,11 +956,42 @@ private fun SoundCloudArtwork(
         // 拖动跟手期间(质量锁,七轮封面同族):blur RenderEffect+offscreen 层随整层位移每帧
         // 重算=下拉掉帧主源——拖动时换成纯 scrim 底(视觉在页面移动中无感知),松手即恢复。
         if (state.isPullingDown) {
+            // 降级层与模糊层同形状(只盖下半部渐变带,顶部渐隐——首版画成全屏纯色把封面
+            // 整个盖黑,真机读作"封面变黑",2026-11-15 用户反馈修正):两个渐变矩形,
+            // 与 artworkModifier 的 scrim 段同款画法,清晰封面在底下保持可见。
+            val scrimColor = MaterialTheme.colorScheme.scrim
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = LOWER_SCRIM_AT_BOTTOM)),
+                        .drawWithContent {
+                            val lineY = lyricLineY(lowerBlockHeight.intValue)
+                            val fadeTop = lineY - LOWER_FADE_BAND.toPx()
+                            drawRect(
+                                brush =
+                                    smoothScrimBrush(
+                                        from = scrimColor.copy(alpha = 0f),
+                                        to = scrimColor.copy(alpha = LOWER_SCRIM_AT_LINE),
+                                        startY = fadeTop,
+                                        endY = lineY,
+                                    ),
+                                topLeft = Offset(0f, fadeTop),
+                                size = Size(size.width, (lineY - fadeTop).coerceAtLeast(0f)),
+                            )
+                            if (size.height > lineY) {
+                                drawRect(
+                                    brush =
+                                        smoothScrimBrush(
+                                            from = scrimColor.copy(alpha = LOWER_SCRIM_AT_LINE),
+                                            to = scrimColor.copy(alpha = LOWER_SCRIM_AT_BOTTOM),
+                                            startY = lineY,
+                                            endY = size.height,
+                                        ),
+                                    topLeft = Offset(0f, lineY),
+                                    size = Size(size.width, size.height - lineY),
+                                )
+                            }
+                        },
             )
         } else {
             AsyncImage(
