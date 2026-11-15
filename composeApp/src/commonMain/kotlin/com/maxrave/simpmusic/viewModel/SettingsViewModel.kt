@@ -1588,7 +1588,7 @@ class SettingsViewModel(
 
     /**
      * Manual backup without a save dialog: writes straight into the configured
-     * backup location (or the Documents/SimpMusic default) and shows a toast.
+     * backup location (or the Documents/DuoMusic default) and shows a toast.
      */
     fun backupNow() {
         viewModelScope.launch {
