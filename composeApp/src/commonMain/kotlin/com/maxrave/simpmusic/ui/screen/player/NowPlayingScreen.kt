@@ -63,14 +63,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -85,7 +81,7 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
-import com.maxrave.simpmusic.expect.HapticFeedback
+import com.maxrave.simpmusic.expect.ui.PlatformBackHandler
 import com.maxrave.simpmusic.expect.ui.rememberVideoAspectRatio
 import com.maxrave.simpmusic.extension.GradientAngle
 import com.maxrave.simpmusic.extension.GradientOffset
@@ -178,17 +174,41 @@ fun NowPlayingScreen(
     onDismiss: () -> Unit = {},
 ) {
     val coroutineScope = rememberCoroutineScope()
+    // 内容真实高度用 onSizeChanged 量——LocalWindowInfo.containerSize 在 ModalBottomSheet 的
+    // popup 窗口里拿到的是错的(实测 ~0)。
+    var contentHeightPx by remember { mutableIntStateOf(0) }
+    // 程序化关页标记:关页按钮走的 hideSheet() 置位,confirmValueChange 对它放行——
+    // 否则 offset≈0 的程序化关闭会被"位移不足"裁决误拦。
+    var programmaticHide by remember { mutableStateOf(false) }
+    var sheetStateRef by remember { mutableStateOf<SheetState?>(null) }
     val sheetState =
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true,
+            // (fix) 下滑关闭位移裁决——社区标准解法(confirmValueChange=库的官方拦截点):
+            // sheet 原生 1:1 跟手、原生弹回,我们只在"松手要滑向 Hidden"那一刻按位移裁决:
+            // 拉过内容高 20% 放行关闭,否则否决弹回。速度不参与(material3 的低速阈值正是
+            // "轻滑一下就整页消失"的根源)。程序化关闭(按钮/返回)一律放行。
+            confirmValueChange = { target ->
+                if (target != SheetValue.Hidden) {
+                    true
+                } else {
+                    // 位移单规则:拉过内容高 20% 才放行;快甩中途采样的 offset 偏小会被拦
+                    // (可预期:轻甩/误甩绝不关,明确的拉距/按钮/BACK 才关)
+                    val h = contentHeightPx
+                    programmaticHide || h <= 0 || (sheetStateRef?.requireOffset() ?: 0f) >= h / 5f
+                }
+            },
         )
+    sheetStateRef = sheetState
 
     val hideSheet: () -> Unit = {
         coroutineScope.launch {
+            programmaticHide = true
             sheetState.hide()
             onDismiss()
         }
     }
+
 
     ModalBottomSheet(
         modifier =
@@ -204,14 +224,24 @@ fun NowPlayingScreen(
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
-        // (fix) 下滑关闭蓄力门——见 sheetDismissGate 的说明。包在内容外层,不影响任何子组件手势。
+        // BACK 关页自己接(handler 须在 popup 内容内层注册才赢过 sheet 内部 back;外层窗口
+        // 的 handler 收不到 popup 的 back):库的 back→Hidden 路径同样过 confirmValueChange,
+        // offset=0 会被"位移不足"裁决误拦——接管后走 hideSheet(带程序化标记)带动画自然关。
+        PlatformBackHandler(enabled = true) {
+            hideSheet()
+        }
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .sheetDismissGate(
+                    .onSizeChanged { contentHeightPx = it.height }
+                    // (fix) 打开动画未稳住的 ~0.6-1s 里 AnchoredDraggable 的拖拽互斥锁被
+                    // animateTo 持有,下滑手势被库整体吞掉(Google issuetracker #481364105 同族,
+                    // 2026-10-03 实测确认)。锁窗内旁观未消费向下位移,过阈值直接 hideSheet()
+                    // (排队等锁后自然关页,带动画)。仅此窗存在,稳态手势完全由库自己处理。
+                    .earlySheetDismissFallback(
                         sheetState = sheetState,
-                        onDismissNow = { onDismiss() },
+                        onHide = { programmaticHide = true; hideSheet() },
                     ),
         ) {
             NowPlayingScreenContent(
@@ -228,132 +258,50 @@ fun NowPlayingScreen(
 }
 
 /**
- * (fix) 播放页"指尖轻碰就整页关掉"与"打开后第一次下滑没反应"两个老毛病,双通道观察器收编。
+ * (fix) 打开动画未稳住时的下滑兜底——只覆盖锁窗,稳态手势完全交还库层。
  *
- * 病根有三:
- * 1. material3(JetBrains 1.12)ModalBottomSheet 的松手判定对"速度"极敏感——全屏 sheet 锚点只有
- *    Expanded/Hidden 两档,小幅快滑(几十 px)也轻易越过速度阈值直接 Hidden=整页消失;
- * 2. 打开动画未稳住时 AnchoredDraggable 的拖拽互斥锁被 animateTo 持有,下滑被整体吞掉
- *    ~0.6-1s(Google issuetracker #481364105 同族;原 earlySheetDismissFallback 只治这一段);
- * 3. 🚨经典/M3E 主题整页内容包在 verticalScroll 里(2026-11-15 GateMove 日志实证:门收到的
- *    事件 dy=0 consumedIn=true)——顶部下拉的"过滚动余量"走 nested scroll 链直接喂给 sheet
- *    的 NestedScrollConnection 拖拽滑关,**完全绕开指针层的门**。v3.12.4 只堵了指针路径,
- *    没有可滚动内容的主题(SoundCloud/AM 卡片区)有效,有 verticalScroll 的主题全部失效,
- *    与用户"多个主题都会有"完全吻合。
- *
- * 双通道蓄力门,逻辑同构(阈值=内容高 20%,总距离关页线 45%,跨阈值给一次确认震感):
- * - **指针层**(Main 通道):吃掉没人要的竖直位移直到阈值,跨阈值后交还 sheet 跟手——
- *   覆盖无可滚动内容的主题(SoundCloud 卡片/AM 主页);
- * - **nested scroll 层**(onPostScroll:innermost 先于 sheet 收到子内容过滚动余量):同款
- *   蓄力-放行-总距离关页,另在 onPostFling 把"未跨阈值手势"的甩速吃掉防滑关——覆盖
- *   verticalScroll/M3E/歌词列表等一切可滚动内容。两层对同一手势天然互斥:位移被滚动
- *   容器消费时指针层 accY 恒 0,不会双重触发。
- * - 动画锁窗内(isAnimationRunning 或打开后未满 800ms)sheet 吞手势,跨阈值即刻直接
- *   onDismiss(原 fallback 瞬关语义);慢拖总距离到 45% 屏高也直接关(sheet 只跟手了
- *   阈值之后那段,库层"位移过半或速度"判定救不了慢拖)。
+ * material3(JetBrains 1.12)ModalBottomSheet 的打开动画仍在跑时,AnchoredDraggable 的拖拽
+ * 互斥锁被 animateTo 持有,用户下滑被整体吞掉约 0.6~1s(Google issuetracker #481364105
+ * 同族,2026-10-03 模拟器实测确认)。锁窗内(Main 通道,旁观不消费)累计未消费向下位移,
+ * 过内容高 20% 即 onHide()——hideSheet 排队等锁后自然动画关页。锁窗外立即退位,
+ * 稳态的跟手/弹回/关闭全部由库自己处理;dismiss 的位移裁决在 confirmValueChange。
  */
 @Composable
-private fun Modifier.sheetDismissGate(
+private fun Modifier.earlySheetDismissFallback(
     sheetState: SheetState,
-    onDismissNow: () -> Unit,
+    onHide: () -> Unit,
 ): Modifier {
     val openedAt = remember { TimeSource.Monotonic.markNow() }
     val currentSheetState by rememberUpdatedState(sheetState)
-    val currentDismiss by rememberUpdatedState(onDismissNow)
-    // 内容真实高度用 onSizeChanged 量——LocalWindowInfo.containerSize 在 ModalBottomSheet 的
-    // popup 窗口里拿到的是错的(实测 ~0,阈值恒 0=一切下滑秒过闸,v3.12.4 修复失效的真因之一)。
+    val currentHide by rememberUpdatedState(onHide)
     var contentHeightPx by remember { mutableIntStateOf(0) }
-    val currentContentHeight by rememberUpdatedState(contentHeightPx)
-    val scrollGate = remember { SheetDismissScrollGate() }
-    scrollGate.enabled = contentHeightPx > 0
-    scrollGate.thresholdPx = contentHeightPx / 5f
-    scrollGate.totalDismissPx = scrollGate.thresholdPx * 2.25f
-    scrollGate.onDismiss = { currentDismiss() }
-    scrollGate.isLocked = {
-        currentSheetState.isAnimationRunning || openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
-    }
     return this
         .onSizeChanged { contentHeightPx = it.height }
-        .nestedScroll(scrollGate)
         .pointerInput(Unit) {
             awaitEachGesture {
-                // 尺寸未就绪(首帧前):不干预,库层原行为兜底
-                val contentH = currentContentHeight
+                val contentH = contentHeightPx
                 if (contentH <= 0) return@awaitEachGesture
-                // 阈值=内容高 20%(约 4.5-5cm):轻碰/习惯性小滑(≤3cm)全部吃掉,只剩明确的下拉。
-                // v3.12.4 曾用固定 80dp——真机上习惯性轻滑轻易跨过,用户感知"没修";按屏高取跨机型一致。
                 val thresholdPx = contentH / 5f
-                // 总距离关页线(内容高 45%):交接后慢速继续拖的用户,库层按"位移过半或速度"判定
-                // 救不了(sheet 只跟手了阈值之后那段,位移永不过半、慢拖速度也低)——到线我们直接关。
-                val totalDismissPx = thresholdPx * 2.25f
-                Logger.w(TAG, "GateDown contentH=$contentH thresholdPx=${thresholdPx.toInt()}")
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val pointerId = down.id
                 var accY = 0f
-                var handedOff = false
-                var events = 0
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
-                    val change = event.changes.firstOrNull { it.id == pointerId }
-                    if (change == null) {
-                        Logger.w(TAG, "GateExit vanished accY=${accY.toInt()} events=$events")
-                        break
-                    }
-                    if (!change.pressed) {
-                        Logger.w(TAG, "GateUp accY=${accY.toInt()} handedOff=$handedOff events=$events")
-                        break
-                    }
-                    events++
-                    if (events <= 8) {
-                        Logger.w(
-                            TAG,
-                            "GateMove e$events dy=${change.positionChange().y.toInt()} consumedIn=${change.isConsumed} accY=${accY.toInt()}",
-                        )
-                    }
+                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                    if (!change.pressed) break
+                    // 只武装到锁窗结束(动画仍在跑,或打开未满 800ms——后者盖住动画尚未 START 的几帧)
+                    val animating = currentSheetState.isAnimationRunning
+                    val inWindow = openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
+                    if (!animating && !inWindow) break
                     val dy = change.positionChange().y
-                    if (handedOff) {
-                        // 交接后只追踪总距离(不消费,sheet 正跟手):慢拖到线直接关
-                        if (dy > 0f) {
-                            accY += dy
-                            if (accY >= totalDismissPx) {
-                                Logger.w(TAG, "Sheet dismiss gate closed on slow drag (accY=${accY.toInt()}px)")
-                                currentDismiss()
-                                break
-                            }
-                        } else if (dy < 0f) {
-                            accY = (accY + dy).coerceAtLeast(thresholdPx)
-                        }
-                        continue
-                    }
                     if (dy > 0f) {
                         accY += dy
                         if (accY >= thresholdPx) {
-                            // 跨阈值=有意下滑:先给一次确认震感(armed 单次,同 artworkDragPager 配方)
-                            HapticFeedback.tap()
-                            val locked =
-                                currentSheetState.isAnimationRunning ||
-                                    openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
-                            if (locked) {
-                                Logger.w(TAG, "Sheet dismiss gate closed directly (accY=${accY.toInt()}px, locked)")
-                                currentDismiss()
-                                break
-                            } else {
-                                // 锁窗外:停止消费,sheet 从这里开始跟手,松手交回库层判定
-                                handedOff = true
-                            }
-                        } else {
-                            // 蓄力中:吃掉竖直位移,sheet 不跟手(轻滑保护)
-                            change.consume()
+                            Logger.w(TAG, "Early sheet dismiss fallback fired (accY=${accY.toInt()}px)")
+                            currentHide()
+                            break
                         }
-                    } else if (dy < 0f && accY > 0f) {
-                        // 蓄力中向上拖=取消意图,清零重来
-                        accY = 0f
-                        change.consume()
                     }
-                }
-                if (!handedOff && accY > 0f) {
-                    // 被门吃掉的手势留痕(落 app 文件日志,真机取证用):轻滑/误触的累计距离
-                    Logger.w(TAG, "Sheet dismiss gate ate a swipe (accY=${accY.toInt()}px)")
                 }
             }
         }
@@ -361,99 +309,6 @@ private fun Modifier.sheetDismissGate(
 
 // 打开后的动画锁窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
 private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
-
-/**
- * nested scroll 层的蓄力门:经典/M3E 主题整页 verticalScroll,顶部下拉的过滚动余量经
- * nested scroll 链直达 sheet 的连接拖拽滑关(指针层看不见这条路)。本连接挂在 sheet 内容
- * Box 上——比 sheet 自己的连接更 inner,PostScroll/PostFling 派发 innermost 优先,余量
- * 先到我们手里。字段由 [sheetDismissGate] 每次重组刷新。
- */
-private class SheetDismissScrollGate : NestedScrollConnection {
-    var enabled = false
-    var thresholdPx = 0f
-    var totalDismissPx = 0f
-    var onDismiss: (() -> Unit)? = null
-    var isLocked: () -> Boolean = { false }
-
-    // held=true=蓄力中(未跨阈值);跨阈值后放行给 sheet 跟手,只继续计总距离。
-    // 手势边界在 scroll 层不可见,用时间间隙(>400ms 无余量)判新手势重置。
-    private var held = true
-    private var heldY = 0f
-    private var totalY = 0f
-    private var dismissedFired = false
-    private var lastDeltaMark: TimeSource.Monotonic.ValueTimeMark? = null
-
-    override fun onPostScroll(
-        consumed: Offset,
-        available: Offset,
-        source: NestedScrollSource,
-    ): Offset {
-        if (!enabled || source != NestedScrollSource.Drag) return Offset.Zero
-        val dy = available.y
-        val now = TimeSource.Monotonic.markNow()
-        val gapMs = lastDeltaMark?.elapsedNow()?.inWholeMilliseconds
-        if (gapMs != null && gapMs > GESTURE_GAP_MS) {
-            reset()
-        }
-        lastDeltaMark = now
-        if (dy < 0f) {
-            // 上滑余量(内容到底继续拉):方向反转,清零重来
-            reset()
-            return Offset.Zero
-        }
-        if (dy == 0f) return Offset.Zero
-        totalY += dy
-        if (totalY >= totalDismissPx && !dismissedFired) {
-            // 慢拖总距离到线:库层"位移过半或速度"救不了(sheet 只跟手阈值后那段),我们直接关
-            Logger.w(TAG, "Scroll gate closed on slow drag (totalY=${totalY.toInt()}px)")
-            dismissedFired = true
-            onDismiss?.invoke()
-            return Offset.Zero
-        }
-        if (held) {
-            heldY += dy
-            if (heldY >= thresholdPx) {
-                held = false
-                HapticFeedback.tap()
-                if (isLocked()) {
-                    Logger.w(TAG, "Scroll gate closed directly (heldY=${heldY.toInt()}px, locked)")
-                    if (!dismissedFired) {
-                        dismissedFired = true
-                        onDismiss?.invoke()
-                    }
-                    return available
-                }
-                Logger.w(TAG, "Scroll gate handed off to sheet (heldY=${heldY.toInt()}px)")
-                return Offset.Zero
-            }
-            return available // 蓄力中:吃掉余量,sheet 不动
-        }
-        return Offset.Zero // 已放行:sheet 跟手,只计总数
-    }
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-        // 未跨阈值的手势:吃掉甩速,防 material3 按速度直接判 Hidden
-        val holdVelocity = enabled && held && heldY > 0f
-        val eaten = if (holdVelocity) available else Velocity.Zero
-        if (holdVelocity) {
-            Logger.w(TAG, "Scroll gate ate a fling (heldY=${heldY.toInt()}px, v=${available.y.toInt()}px/s)")
-        }
-        reset()
-        return eaten
-    }
-
-    private fun reset() {
-        held = true
-        heldY = 0f
-        totalY = 0f
-        dismissedFired = false
-    }
-
-    private companion object {
-        // 事件间隙超过这个值读作新手势(正常拖动事件间隔 <50ms)
-        const val GESTURE_GAP_MS = 400L
-    }
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

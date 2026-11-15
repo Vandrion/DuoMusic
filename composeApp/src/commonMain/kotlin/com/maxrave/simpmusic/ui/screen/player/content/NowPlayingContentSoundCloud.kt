@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.LaunchedEffect
@@ -851,6 +852,25 @@ private fun SoundCloudArtwork(
     val thumbnailUrl =
         page?.let { state.artworkQueue.getOrNull(it) }.playerArtworkUrl()
             ?: state.screenData.thumbnailURL
+    // 进场减负(真机反馈"打开还是卡"):Pager 邻页(beyondViewportPageCount=1)会在进场同帧
+    // 各发一个 1080 请求,三路解码/上传叠在 sheet 打开动画上。邻页延后 350ms 再发——
+    // 进场时邻页在屏外无感,横滑到邻页时早已就位。
+    var neighborReady by remember(page) { mutableStateOf(page == null || isCurrentPage) }
+    if (!neighborReady) {
+        LaunchedEffect(page) {
+            withFrameNanos { }
+            delay(350)
+            neighborReady = true
+        }
+    }
+    // 全屏 32dp blur 层(RenderEffect)是进场动画帧的大头 GPU 开销:延迟到 sheet 落定后再
+    // 挂载,进场期该层不存在;blur+scrim 遮罩下晚 400ms 出现不可感知。
+    var lowerBlurReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        delay(400)
+        lowerBlurReady = true
+    }
     Box(modifier = modifier.fillMaxSize()) {
         var canvasReady by remember(canvas?.url) { mutableStateOf(false) }
         if (canvas != null) {
@@ -883,7 +903,8 @@ private fun SoundCloudArtwork(
                     .crossfade(550)
                     .build()
             }
-        val painter = rememberAsyncImagePainter(request)
+        // 邻页进场延后再发请求:未就绪时画占位器(holder),请求完全不启动
+        val painter = if (neighborReady) rememberAsyncImagePainter(request) else rememberHolderPainter()
         Image(
             painter = painter,
             contentDescription = null,
@@ -892,7 +913,7 @@ private fun SoundCloudArtwork(
         )
         // 加载失败回退(maxres→hqdefault),与经典主题同款
         LaunchedEffect(painter) {
-            painter.state.collectLatest { state ->
+            (painter as? AsyncImagePainter)?.state?.collectLatest { state ->
                 if (state is AsyncImagePainter.State.Error) {
                     val fallback = artworkUrl?.replace("maxresdefault", "hqdefault")
                     if (fallback != null && fallback != artworkUrl) artworkUrl = fallback
@@ -903,7 +924,7 @@ private fun SoundCloudArtwork(
         // onSuccess 只在首次加载时来一次,补发保证落位后壳层调色板跟上前一首换色。
         LaunchedEffect(painter, isCurrentPage) {
             if (!isCurrentPage) return@LaunchedEffect
-            painter.state.collectLatest { state ->
+            (painter as? AsyncImagePainter)?.state?.collectLatest { state ->
                 if (state is AsyncImagePainter.State.Success) {
                     actions.onArtworkBitmap(state.result.image.toImageBitmap())
                 }
@@ -928,19 +949,18 @@ private fun SoundCloudArtwork(
                         )
                     }.blur(LOWER_BLUR)
             }
-        AsyncImage(
-            // 模糊副本专用小图请求(240px):blur 抹平一切细节,视觉与 1080 源无差,解码近乎免费。
-            // 严格不带 crossfade——crossfade 的每一帧重绘都会重录一次本节点的全屏 32dp blur
-            // offscreen 层(RenderEffect),进场 550ms ≈ 66 帧全屏模糊重算,是本主题进场卡顿的
-            // 大头。blur+scrim 遮罩下,小图解码到位时的"弹入"不可见。
-            model =
-                remember(artworkUrl, platformContext) {
-                    ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
-                },
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().alpha(coverAlpha).then(lowerBlur),
-        )
+        // 模糊副本延迟挂载(进场期该层不存在):240px 小图请求,严格无 crossfade。
+        if (lowerBlurReady) {
+            AsyncImage(
+                model =
+                    remember(artworkUrl, platformContext) {
+                        ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
+                    },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().alpha(coverAlpha).then(lowerBlur),
+            )
+        }
         if (showCurrentVideo) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
                 // A frame of the video's own shape, as M3 Expressive and the Apple Music style give
