@@ -3,27 +3,31 @@ package com.maxrave.simpmusic
 import com.maxrave.logger.Logger
 
 /**
- * Registers the "simpmusic://" custom URI protocol handler in Windows Registry
- * under HKEY_CURRENT_USER (no admin rights required).
+ * Registers the app's custom URI protocol handlers in Windows Registry under HKEY_CURRENT_USER
+ * (no admin rights required).
  *
- * Registry structure:
+ * Registry structure (per scheme):
  * ```
- * HKCU\Software\Classes\simpmusic
- *     (Default) = "URL:SimpMusic Protocol"
+ * HKCU\Software\Classes\<scheme>
+ *     (Default) = "URL:DuoMusic Protocol"
  *     URL Protocol = ""
  *     \DefaultIcon
  *         (Default) = "\"<exe_path>\",0"
  *     \shell\open\command
  *         (Default) = "\"<exe_path>\" \"%1\""
  * ```
+ *
+ * "duomusic" is the scheme since the 2026-11 rebrand; "simpmusic" stays registered so
+ * pre-rebrand links keep resolving.
  */
 object WindowsProtocolRegistrar {
     private const val TAG = "WindowsProtocolRegistrar"
-    private const val SCHEME = "simpmusic"
+    private const val SCHEME = "duomusic"
+    private const val LEGACY_SCHEME = "simpmusic"
 
     /**
      * The Last.fm auth callback. Its scheme is fixed by the callback URL registered on the Last.fm
-     * API account, so it cannot be folded into "simpmusic".
+     * API account, so it cannot be folded into the app scheme.
      */
     private const val LASTFM_SCHEME = "wordbyword"
 
@@ -37,8 +41,9 @@ object WindowsProtocolRegistrar {
             return
         }
 
-        register(SCHEME, "URL:SimpMusic Protocol", exePath)
-        register(LASTFM_SCHEME, "URL:SimpMusic Last.fm Callback", exePath)
+        register(SCHEME, "URL:DuoMusic Protocol", exePath)
+        register(LEGACY_SCHEME, "URL:DuoMusic Protocol (legacy)", exePath)
+        register(LASTFM_SCHEME, "URL:DuoMusic Last.fm Callback", exePath)
     }
 
     private fun register(

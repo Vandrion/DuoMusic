@@ -183,13 +183,15 @@
                 <data android:pathPrefix="/app/" />
             </intent-filter>
 
-            <!-- SimpMusic deep link filter (custom scheme) -->
+            <!-- DuoMusic deep link filter (custom scheme). duomusic:// since the rebrand;
+                 simpmusic:// kept registered so pre-rebrand links keep resolving. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="duomusic" />
                 <data android:scheme="simpmusic" />
             </intent-filter>
 

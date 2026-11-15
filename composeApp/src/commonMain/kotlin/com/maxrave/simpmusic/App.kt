@@ -155,6 +155,12 @@ import kotlin.time.ExperimentalTime
  * 远端 tag(v3.0.1 形状)是否比当前版本新:逐段数值比较,当前版本无法解析时保守返回 true
  * (弹窗错弹比真更新被吞掉无害)。任意一段缺失按 0 补齐。
  */
+/**
+ * The app's custom URI scheme. `duomusic://` since the 2026-11 rebrand; `simpmusic://` links from
+ * before it (and QR invites from old desktop builds) keep working, so both schemes route here.
+ */
+internal fun isAppScheme(scheme: String?): Boolean = scheme == "duomusic" || scheme == "simpmusic"
+
 private fun isUpdateAvailable(
     remoteTag: String,
     currentVersion: String = VersionManager.getVersionName(),
@@ -300,7 +306,7 @@ fun App(
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
         if (data != null) {
-            if (data.scheme == "simpmusic" && data.host == "notification") {
+            if (isAppScheme(data.scheme) && data.host == "notification") {
                 viewModel.setIntent(null)
                 navController.navigate(
                     NotificationDestination,
@@ -317,25 +323,25 @@ fun App(
                 // of it. The token is handed straight to the shared view model, and the screen
                 // closes itself when it sees a session key appear.
                 token?.let { viewModel.completeLastfmLogin(it) }
-            } else if (data.scheme == "simpmusic" && data.host == "discord-auth") {
+            } else if (isAppScheme(data.scheme) && data.host == "discord-auth") {
                 // Discord sends the user back here after they approve SimpMusic (Full builds):
                 // simpmusic://discord-auth?code=…&state=…. No navigation, as with Last.fm: the login
                 // screen is already open and closes itself once the login is stored.
                 Logger.d("MainActivity", "Discord callback, code present: ${!data.getQueryParameter("code").isNullOrEmpty()}")
                 viewModel.setIntent(null)
                 viewModel.completeDiscordLogin(data.toString())
-            } else if (data.host == "simpmusic.org" || data.scheme == "simpmusic") {
+            } else if (data.host == "simpmusic.org" || isAppScheme(data.scheme)) {
                 // https://simpmusic.org/app/watch?v=VIDEO_ID
                 // https://simpmusic.org/app/playlist?list=PLAYLIST_ID
                 // https://simpmusic.org/app/channel/CHANNEL_ID
-                // simpmusic://watch?v=VIDEO_ID  (host="watch", no path)
-                // simpmusic://playlist?list=PLAYLIST_ID
-                // simpmusic://channel/CHANNEL_ID
+                // duomusic://watch?v=VIDEO_ID  (host="watch", no path; legacy simpmusic:// kept working)
+                // duomusic://playlist?list=PLAYLIST_ID
+                // duomusic://channel/CHANNEL_ID
                 val segments = data.pathSegments
                 // For simpmusic.org: segments = ["app", "watch"] → appPath = segments[1]
-                // For simpmusic://: host IS the appPath (e.g. host="watch"), segments = []
+                // For the app scheme: host IS the appPath (e.g. host="watch"), segments = []
                 val appPath =
-                    if (data.scheme == "simpmusic") {
+                    if (isAppScheme(data.scheme)) {
                         data.host
                     } else {
                         segments.getOrNull(1)
@@ -369,10 +375,10 @@ fun App(
                     }
 
                     "channel", "c" -> {
-                        // simpmusic://channel/UCxxx → segments = ["UCxxx"]
+                        // duomusic://channel/UCxxx → segments = ["UCxxx"]
                         // simpmusic.org/app/channel/UCxxx → segments = ["app", "channel", "UCxxx"]
                         val artistId =
-                            if (data.scheme == "simpmusic") {
+                            if (isAppScheme(data.scheme)) {
                                 segments.firstOrNull()
                             } else {
                                 segments.getOrNull(2)

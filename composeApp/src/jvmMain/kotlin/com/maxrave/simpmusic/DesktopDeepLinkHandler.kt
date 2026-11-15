@@ -91,10 +91,10 @@ object DesktopDeepLinkHandler {
      * Converts a raw URI string into a [GenericIntent] that App.kt can process.
      *
      * Conversion rules:
-     * 1. simpmusic://open-app?url=<encoded_url>
+     * 1. duomusic://open-app?url=<encoded_url> (legacy: simpmusic://open-app)
      *    → Extract the `url` param and use it as intent data
      *
-     * 2. simpmusic://watch?v=xxx, simpmusic://playlist?list=xxx, etc.
+     * 2. duomusic://watch?v=xxx, duomusic://playlist?list=xxx, etc.
      *    → Convert to https://simpmusic.org/app/watch?v=xxx format
      *      so App.kt handles it uniformly via the simpmusic.org branch
      *
@@ -105,35 +105,35 @@ object DesktopDeepLinkHandler {
         val parsed = Uri.parse(uri)
 
         val actualUri = when {
-            // simpmusic://open-app?url=<encoded_url>
-            parsed.scheme == "simpmusic" && parsed.host == "open-app" -> {
+            // duomusic://open-app?url=<encoded_url>
+            isAppScheme(parsed.scheme) && parsed.host == "open-app" -> {
                 val urlParam = parsed.getQueryParameter("url")
                 if (urlParam != null) {
                     Logger.d(TAG, "Extracted URL from open-app: $urlParam")
                     Uri.parse(urlParam)
                 } else {
-                    // simpmusic://open-app without params → just open the app, no navigation
+                    // open-app without params → just open the app, no navigation
                     Logger.d(TAG, "open-app without URL param, just opening app")
                     null
                 }
             }
 
-            // simpmusic://discord-auth?code=…&state=… → pass through untouched: it is Discord's OAuth
+            // duomusic://discord-auth?code=…&state=… → pass through untouched: it is Discord's OAuth
             // redirect, which App.kt matches on this exact scheme and host, not a page to open.
-            parsed.scheme == "simpmusic" && parsed.host == "discord-auth" -> parsed
+            isAppScheme(parsed.scheme) && parsed.host == "discord-auth" -> parsed
 
-            // simpmusic://watch?v=xxx → https://simpmusic.org/app/watch?v=xxx
-            // simpmusic://playlist?list=xxx → https://simpmusic.org/app/playlist?list=xxx
-            // simpmusic://channel/UCxxx → https://simpmusic.org/app/channel/UCxxx
-            // simpmusic://album?id=xxx → https://simpmusic.org/app/album?id=xxx
-            parsed.scheme == "simpmusic" && parsed.host != null -> {
+            // duomusic://watch?v=xxx → https://simpmusic.org/app/watch?v=xxx
+            // duomusic://playlist?list=xxx → https://simpmusic.org/app/playlist?list=xxx
+            // duomusic://channel/UCxxx → https://simpmusic.org/app/channel/UCxxx
+            // duomusic://album?id=xxx → https://simpmusic.org/app/album?id=xxx
+            isAppScheme(parsed.scheme) && parsed.host != null -> {
                 val host = parsed.host!!
                 val query = parsed.query?.let { "?$it" } ?: ""
                 val pathSuffix = parsed.pathSegments.joinToString("/").let {
                     if (it.isNotEmpty()) "/$it" else ""
                 }
                 val convertedUrl = "https://simpmusic.org/app/$host$pathSuffix$query"
-                Logger.d(TAG, "Converted simpmusic:// to: $convertedUrl")
+                Logger.d(TAG, "Converted app scheme link to: $convertedUrl")
                 Uri.parse(convertedUrl)
             }
 

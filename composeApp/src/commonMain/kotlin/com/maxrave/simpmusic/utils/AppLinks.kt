@@ -33,7 +33,8 @@ fun isAppLinkAvailable(
 
 /**
  * [isAppLinkAvailable] for a link written out in full, as a banner carries it: an `https://` page
- * always is, and a link that is neither that nor `simpmusic://` never is.
+ * always is, and a link that is neither that nor an app-scheme link (`duomusic://`, legacy
+ * `simpmusic://`) never is.
  */
 fun isAppLinkAvailable(
     link: String,
@@ -41,7 +42,7 @@ fun isAppLinkAvailable(
     youTubeLoggedIn: Boolean,
 ): Boolean {
     if (link.startsWith("https://", ignoreCase = true)) return true
-    if (!link.startsWith("simpmusic://")) return false
+    if (!link.startsWith("duomusic://", ignoreCase = true) && !link.startsWith("simpmusic://", ignoreCase = true)) return false
     val uri = runCatching { Uri.parse(link) }.getOrNull() ?: return false
     return isAppLinkAvailable(uri.host, libraryTabOf(uri), localTrackingOn, youTubeLoggedIn)
 }
