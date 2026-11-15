@@ -69,6 +69,10 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -193,6 +197,31 @@ fun NowPlayingScreen(
     // 下拉激活(拖动跟手中):拖动期间冻结重效果层(iOS 控制中心同款降级渲染——七轮封面
     // "质量锁"同族手法)。锁外=sheet offset 流;锁窗内 sheet 不动,由 fallback 回调补。
     var pullActive by remember { mutableStateOf(false) }
+    // (fix) 歌词/列表区下拉守卫(经典/M3E 整页 verticalScroll 版,用户 2026-11-15):
+    // 列表滚到顶后的继续下拉(过滚动余量)若手指起点在屏高 35% 以下(歌词/下方内容区)
+    // 一律吃掉,不喂给 sheet——下拉关闭只保留顶部区;AM/SoundCloud 歌词视图已有各自的
+    // 无条件守卫(余量到不了这里),此层只兜经典/M3E 的主列表。
+    var dismissGestureDownY by remember { mutableFloatStateOf(-1f) }
+    val dismissZoneGuard =
+        remember {
+            object : NestedScrollConnection {
+                private fun inLyricsZone(): Boolean {
+                    val h = dismissGestureDownY
+                    return h >= 0f && contentHeightPx > 0 && h > contentHeightPx * SHEET_DISMISS_TOP_ZONE_FRACTION_INV
+                }
+
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset = if (source == NestedScrollSource.Drag && available.y > 0f && inLyricsZone()) available else Offset.Zero
+
+                override suspend fun onPostFling(
+                    consumed: Velocity,
+                    available: Velocity,
+                ): Velocity = if (available.y > 0f && inLyricsZone()) available else Velocity.Zero
+            }
+        }
     var sheetStateRef by remember { mutableStateOf<SheetState?>(null) }
     val sheetState =
         rememberModalBottomSheetState(
@@ -263,6 +292,13 @@ fun NowPlayingScreen(
                 Modifier
                     .fillMaxSize()
                     .onSizeChanged { contentHeightPx = it.height }
+                    .nestedScroll(dismissZoneGuard)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            dismissGestureDownY = down.position.y
+                        }
+                    }
                     // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
                     // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet
                     // 实时 offset 判定——veto 线(SHEET_DISMISS_MIN_FRACTION)之上的拉距松手
@@ -424,6 +460,10 @@ private const val SHEET_DISMISS_FRACTION = 0.15f
 // confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
 // "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
 private const val SHEET_DISMISS_MIN_FRACTION = 0.08f
+
+// 下拉关闭的顶部放行区=屏高 35%:手指起点在其下方(歌词/列表区)的"列表已在顶"下拉
+// 一律吃掉(不关页);经典主题封面大,35% 覆盖标题条+封面上部,与"顶部那一条"语义一致。
+private const val SHEET_DISMISS_TOP_ZONE_FRACTION_INV = 0.65f
 
 // 打开后的动画锁窗:盖住"动画未启动"与"动画未结束"两段(实测库吞手势窗口 ~0.6-1s)。
 private val SHEET_DISMISS_LOCK_WINDOW = 800.milliseconds
