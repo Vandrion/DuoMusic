@@ -2,12 +2,9 @@ package com.maxrave.simpmusic.ui.screen.player.content
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -756,14 +753,20 @@ private fun NowPlayingSoundCloudLayout(
 @Composable
 private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRight {
     val colors = MaterialTheme.colorScheme
-    val transition = rememberInfiniteTransition(label = "soundCloudCrossfadeSweep")
-    val sweep by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(3200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
-        label = "soundCloudSweepHead",
-    )
     val timeline by state.timelineFlow.collectAsStateWithLifecycle()
+    // 扫光只在交叉淡入期间跑:常驻 InfiniteTransition 会让动画时钟永不停表,暂停/稳态也白烧
+    // 帧(与真机发热教训同族——"常驻动画"必须按需起停)。Restart 语义与原 infiniteRepeatable 一致。
+    val sweep = remember { Animatable(0f) }
+    LaunchedEffect(timeline.isCrossfading) {
+        if (!timeline.isCrossfading) {
+            sweep.snapTo(0f)
+        } else {
+            while (true) {
+                sweep.animateTo(1f, tween(3200, easing = LinearEasing))
+                sweep.snapTo(0f)
+            }
+        }
+    }
     Crossfade(
         targetState = timeline.isCrossfading to state.audioQualityLabel,
         animationSpec = tween(300),
@@ -774,7 +777,7 @@ private fun SoundCloudPlaybackStatus(state: NowPlayingContentState) = LeftToRigh
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (crossfading) {
                 val span = 140f
-                val head = sweep * (span * 3f) - span
+                val head = sweep.value * (span * 3f) - span
                 Text(
                     text = stringResource(Res.string.crossfading),
                     style =
@@ -917,7 +920,14 @@ private fun SoundCloudArtwork(
                     }.blur(LOWER_BLUR)
             }
         AsyncImage(
-            model = request,
+            // 模糊副本专用小图请求(240px):blur 抹平一切细节,视觉与 1080 源无差,解码近乎免费。
+            // 严格不带 crossfade——crossfade 的每一帧重绘都会重录一次本节点的全屏 32dp blur
+            // offscreen 层(RenderEffect),进场 550ms ≈ 66 帧全屏模糊重算,是本主题进场卡顿的
+            // 大头。blur+scrim 遮罩下,小图解码到位时的"弹入"不可见。
+            model =
+                remember(artworkUrl, platformContext) {
+                    ImageRequest.Builder(platformContext).data(artworkUrl).size(240).build()
+                },
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().alpha(coverAlpha).then(lowerBlur),
