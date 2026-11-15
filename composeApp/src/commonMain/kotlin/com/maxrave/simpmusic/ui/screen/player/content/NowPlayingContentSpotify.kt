@@ -281,7 +281,7 @@ fun NowPlayingContentSpotify(
         }
     }
 
-    Box(modifier = Modifier.lyricsZonePullGuard { screenInfo.hPX }) {
+    Box(modifier = Modifier.lyricsZonePullGuard(viewportHeightPx = { screenInfo.hPX }, isScrolledDown = { state.mainScrollState.value > 0 })) {
         Column(
             Modifier
                 .verticalScroll(

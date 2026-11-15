@@ -187,8 +187,12 @@ internal fun Modifier.artworkDragPager(
  * (经典/M3E);SoundCloud/AM 卡片无列表,分区拦截会误伤其全卡下拉关页,不挂。
  */
 @Composable
-internal fun Modifier.lyricsZonePullGuard(viewportHeightPx: () -> Int): Modifier {
+internal fun Modifier.lyricsZonePullGuard(
+    viewportHeightPx: () -> Int,
+    isScrolledDown: () -> Boolean,
+): Modifier {
     val currentViewport by rememberUpdatedState(viewportHeightPx)
+    val currentScrolledDown by rememberUpdatedState(isScrolledDown)
     // 歌词区起手标记:nested scroll 的 PostFling 通道要吃掉松手甩速——指针层已逐帧吃掉
     // drag(sheet 拖不动),但 fling 速度沿 nested scroll 上抛,库会按速度选 Hidden 目标,
     // confirm 的 8% 微位移线拦不住(300px 下拉甩关,实测最后一块拼图)。
@@ -210,7 +214,10 @@ internal fun Modifier.lyricsZonePullGuard(viewportHeightPx: () -> Int): Modifier
                 val h = currentViewport()
                 // 视口高分界(调用方传 screenInfo.hPX)——本节点自身高度是整页内容高
                 // (verticalScroll 的 wrap 内容),用它会把分界点推到屏外=守卫永不触发(实测)
-                zoneArmed = h > 0 && down.position.y > h * LYRICS_ZONE_FRACTION
+                // 列表已滚离第一屏(歌词占满全屏,手指自然落在屏中部)→全屏拦;第一屏时
+                // 仅拦 65% 线以下(顶部区保留关页)。真机首版只按手指 y 分界,中部起手
+                // (y~1500<65% 线)直接放行=用户复测"还是老样子"的根因。
+                zoneArmed = h > 0 && (currentScrolledDown() || down.position.y > h * LYRICS_ZONE_FRACTION)
                 if (!zoneArmed) return@awaitEachGesture
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
