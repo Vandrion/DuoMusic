@@ -281,7 +281,7 @@ fun NowPlayingContentSpotify(
         }
     }
 
-    Box {
+    Box(modifier = Modifier.lyricsZonePullGuard { screenInfo.hPX }) {
         Column(
             Modifier
                 .verticalScroll(
