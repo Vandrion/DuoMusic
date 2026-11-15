@@ -94,8 +94,8 @@ object WindowsProtocolRegistrar {
     private fun resolveExePath(): String? {
         // JPackage directory structure:
         //   <app>/runtime/...  (java.home points here)
-        //   <app>/SimpMusic.exe
-        // So we go: java.home → parent (runtime) → parent (app) → SimpMusic.exe
+        //   <app>/DuoMusic.exe  (pre-rebrand builds: SimpMusic.exe)
+        // So we go: java.home → parent (runtime) → parent (app) → the exe
         val javaHome = System.getProperty("java.home") ?: return null
         val javaHomeDir = java.io.File(javaHome)
 
@@ -110,9 +110,12 @@ object WindowsProtocolRegistrar {
         }
 
         if (appDir != null) {
-            val exeFile = java.io.File(appDir, "SimpMusic.exe")
-            if (exeFile.exists()) {
-                return exeFile.absolutePath
+            // Current name first; a pre-rebrand install still gets registered via its old exe.
+            val exe = listOf("DuoMusic.exe", "SimpMusic.exe").firstNotNullOfOrNull { name ->
+                java.io.File(appDir, name).takeIf { it.exists() }
+            }
+            if (exe != null) {
+                return exe.absolutePath
             }
         }
 

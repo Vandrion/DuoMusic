@@ -122,20 +122,22 @@ dependencies {
     windowsAmd64(libs.compose.windows.x64)
 }
 
-// Append SimpMusic-specific keys to Conveyor's generated config file and
+// Append DuoMusic-specific keys to Conveyor's generated config file and
 // — crucially — replace the auto-detected `app.inputs` classpath with
 // ProGuard's shrunk jar directory so the packaged AppImage carries
 // obfuscated + size-reduced bytecode instead of raw Gradle output.
 // `dependsOn(proguardReleaseJars)` builds the shrunk jars first.
+// fsname/display-name drive every artifact name (DuoMusic.exe, duomusic-*.msix,
+// duomusic.crt, DuoMusic-*.AppImage) and desktop-package.yml + scripts/ match those.
 tasks.named<hydraulic.conveyor.gradle.WriteConveyorConfigTask>("writeConveyorConfig") {
     dependsOn(tasks.named("proguardReleaseJars"))
     val proguardJarsDir = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
     doLast {
         destination.get().asFile.appendText(
             """
-            |app.fsname = simpmusic
-            |app.display-name = SimpMusic
-            |app.rdns-name = com.maxrave.simpmusic
+            |app.fsname = duomusic
+            |app.display-name = DuoMusic
+            |app.rdns-name = com.github.vandrion.duomusic
             |
             |// Override the Gradle-detected classpath with the ProGuard'd
             |// jar directory. Conveyor expands a directory entry to every
