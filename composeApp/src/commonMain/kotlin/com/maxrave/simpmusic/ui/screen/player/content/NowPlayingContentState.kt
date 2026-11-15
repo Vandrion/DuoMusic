@@ -8,8 +8,8 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -20,14 +20,20 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxrave.domain.data.entities.NewFormatEntity
 import com.maxrave.domain.data.model.browse.album.Track
@@ -42,6 +48,7 @@ import com.maxrave.simpmusic.viewModel.NowPlayingScreenData
 import com.maxrave.simpmusic.viewModel.RemoteSongLikeState
 import com.maxrave.simpmusic.viewModel.UIEvent
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
@@ -99,6 +106,17 @@ internal val PlayerBackdropColor = Color(0xFF121212)
  * fling is disabled: release sends the player skip once and animates only the remaining distance
  * with [ArtworkPagerSnapAnimation]. No velocity decay or spring can overshoot and pull the cover
  * back. The shell keeps the visual track on the old page until both player and Pager agree.
+ *
+ * (fix) 手势仲裁(2026-11-16,用户报"下拉关闭半截还能触发左右切封面")两层修复:
+ * ①方向支配 slop:库层 draggable(Horizontal) 的 slop 判定只看主轴 |x|(foundation
+ *   TouchSlopDetector 主轴规则,竖向分量完全不参与),下拉开局带一点横向漂移就会抢先认领
+ *   指针、把整条下拉劫持成横向滑动。自定义探测改为累计 x/y、总位移过 slop 时判 |x|>|y|
+ *   才认领横拖;竖向主导直接弃权、零消费,自然交还 sheet/verticalScroll。
+ * ②下拉/回弹期缴械:enabled 挂上 !isPullingDown——sheet 处于下拉跟手或弹回动画(offset>8)
+ *   时不接单,半截态/回弹窗内的触碰不再被横滑吃掉。
+ * 未认领阶段逐事件 Final 通道复核 isConsumed:Main 通道子层先于祖先处理,祖先同事件的
+ * 消费只在 Final(父先子后)可见——祖先(sheet/滚动/门)认领后本探测立即弃权,与框架
+ * awaitTouchSlopOrCancellation 的取消语义同构;认领后消费位移饿死祖先,同 draggable 语义。
  */
 @Composable
 internal fun Modifier.artworkDragPager(
@@ -109,16 +127,20 @@ internal fun Modifier.artworkDragPager(
     val onUIEvent by rememberUpdatedState(actions.onUIEvent)
     val onDragChanged by rememberUpdatedState(actions.onArtworkDragChanged)
     val onSkipRequested by rememberUpdatedState(actions.onArtworkSkipRequested)
-    val enabled =
+    val isEnabled =
         state.artworkQueue.isNotEmpty() &&
             state.controllerState.repeatState !is RepeatState.One &&
-            (!state.artworkMotionInProgress || state.artworkDragInProgress)
-    val canNext = state.controllerState.isNextAvailable
-    val canPrevious = state.controllerState.isPreviousAvailable
+            (!state.artworkMotionInProgress || state.artworkDragInProgress) &&
+            !state.isPullingDown
+    val enabled by rememberUpdatedState(isEnabled)
+    val canNext by rememberUpdatedState(state.controllerState.isNextAvailable)
+    val canPrevious by rememberUpdatedState(state.controllerState.isPreviousAvailable)
+    val lastIndex by rememberUpdatedState(state.artworkQueue.lastIndex)
     val thresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
     var startPage by remember(pager) { mutableIntStateOf(0) }
     var dragPx by remember(pager) { mutableFloatStateOf(0f) }
     var snapHapticArmed by remember(pager) { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
     val dragState = rememberDraggableState { delta ->
         val pageWidth = (pager.layoutInfo.pageSize + pager.layoutInfo.pageSpacing).toFloat()
         if (pageWidth > 0f) {
@@ -137,23 +159,16 @@ internal fun Modifier.artworkDragPager(
             pager.dispatchRawDelta(-consumed)
         }
     }
-    return draggable(
-        state = dragState,
-        orientation = Orientation.Horizontal,
-        enabled = enabled,
-        onDragStarted = {
-            startPage = pager.settledPage
-            dragPx = 0f
-            snapHapticArmed = true
-            onDragChanged(true)
-        },
-        onDragStopped = {
-            val target =
-                when {
-                    dragPx <= -thresholdPx && canNext -> startPage + 1
-                    dragPx >= thresholdPx && canPrevious -> startPage - 1
-                    else -> startPage
-                }.coerceIn(0, state.artworkQueue.lastIndex)
+
+    // 松手落位(原 draggable onDragStopped 同构):过 56dp 线发一次跳歌请求 + 240ms 单向收敛
+    fun settleAfterDrag() {
+        val target =
+            when {
+                dragPx <= -thresholdPx && canNext -> startPage + 1
+                dragPx >= thresholdPx && canPrevious -> startPage - 1
+                else -> startPage
+            }.coerceIn(0, lastIndex)
+        scope.launch {
             try {
                 if (target != startPage) {
                     // Previous would restart the current song after a few seconds; a right drag
@@ -165,8 +180,70 @@ internal fun Modifier.artworkDragPager(
             } finally {
                 onDragChanged(false)
             }
-        },
-    )
+        }
+    }
+
+    // 手势被取消(指针消失):不复位会留下半页偏移+dragInProgress 卡 true
+    fun snapBackAfterCancel() {
+        dragPx = 0f
+        scope.launch {
+            try {
+                pager.animateScrollToPage(startPage, animationSpec = ArtworkPagerSnapAnimation)
+            } finally {
+                onDragChanged(false)
+            }
+        }
+    }
+
+    return pointerInput(pager) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var dragging = false
+            var total = Offset.Zero
+            val slop = viewConfiguration.touchSlop
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null) {
+                    if (dragging) snapBackAfterCancel()
+                    break
+                }
+                if (!change.pressed) {
+                    if (dragging) settleAfterDrag()
+                    break
+                }
+                if (dragging) {
+                    // 已认领:横分量全权跟手并消费(饿死祖先 sheet,同 draggable 语义)
+                    dragState.dispatchRawDelta(change.positionChange().x)
+                    change.consume()
+                    continue
+                }
+                // 未认领:累计 unconsumed 位移,过 slop 时按方向支配裁决
+                total += change.positionChange()
+                if (total.getDistance() >= slop) {
+                    if (abs(total.x) > abs(total.y) && enabled) {
+                        dragging = true
+                        startPage = pager.settledPage
+                        dragPx = 0f
+                        snapHapticArmed = true
+                        onDragChanged(true)
+                        dragState.dispatchRawDelta(total.x) // slop 段并入首帧(框架 overSlop 同款)
+                    } else {
+                        // 竖向主导(或下拉期缴械):弃权,零消费交还 sheet/verticalScroll
+                        break
+                    }
+                } else {
+                    // Final 通道复核祖先消费(Main 子层先处理看不到祖先同事件消费)
+                    val finalEvent = awaitPointerEvent(PointerEventPass.Final)
+                    val finalChange = finalEvent.changes.firstOrNull { it.id == down.id }
+                    if (finalChange == null || finalChange.isConsumed) {
+                        if (dragging) snapBackAfterCancel()
+                        break
+                    }
+                }
+            }
+        }
+    }
 }
 
 
