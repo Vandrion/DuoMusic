@@ -302,13 +302,6 @@ class SharedViewModel(
         source: com.maxrave.domain.source.MusicSource,
         onSwitched: (Boolean) -> Unit = {},
     ) {
-        Logger.w("SRCPROBE", "switchSource -> $source (current=${selectedSource.value})")
-        // 诊断日志(原 android.util.Log 直写,三星 ROM 静音 kermit 时代加的;换自研
-        // 跨平台 Logger 后桌面端才可编译,日志经 fork 写入器仍可导出)
-        Logger.w(
-            "SRCPROBE",
-            "switchSource -> $source (current=${selectedSource.value}, neteaseLoggedIn=${neteaseLoggedIn.value})",
-        )
         if (selectedSource.value == source.name) return
         viewModelScope.launch {
             // 网易未登录选网易源:不切换,toast 引导登录(菜单项保持可点,别毫无反应)。
@@ -325,8 +318,6 @@ class SharedViewModel(
                     dataStoreManager.neteaseCookie.first().isNotBlank()
                 } ?: true
             if (source == com.maxrave.domain.source.MusicSource.NETEASE && !neteaseLoggedIn.value && !cookiePresent) {
-                Logger.w("SRCPROBE", "switchSource blocked: netease not logged in")
-                Logger.w("SRCPROBE", "switchSource blocked: netease not logged in")
                 makeToast(getString(Res.string.login_netease_first))
                 onSwitched(false)
                 return@launch
@@ -337,13 +328,7 @@ class SharedViewModel(
                 setSelectedSource(source)
                 true
             }
-            Logger.w(
-                "SRCPROBE",
-                "switchSource write result: written=$written, selectedSource now=${selectedSource.value}",
-            )
             if (written != true && selectedSource.value != source.name) {
-                Logger.w("SRCPROBE", "switchSource write timed out: $source")
-                Logger.w("SRCPROBE", "switchSource write timed out: $source")
                 makeToast(getString(Res.string.switch_source_failed))
                 onSwitched(false)
             } else {
@@ -3154,12 +3139,10 @@ class SharedViewModel(
      *  navigate)。Home 是 start 必在栈内,popBackStack(route,inclusive=false) 任意深度
      *  一步到位;已在 Home 时无栈可弹是天然 no-op,不会误退 app。 */
     fun navigateHomeAndRefresh(navController: androidx.navigation.NavHostController) {
-        val popped =
-            navController.popBackStack(
-                com.maxrave.simpmusic.ui.navigation.destination.home.HomeDestination,
-                inclusive = false,
-            )
-        Logger.w("SRCPROBE", "navigateHomeAndRefresh: popped=$popped, current=${navController.currentDestination?.route}")
+        navController.popBackStack(
+            com.maxrave.simpmusic.ui.navigation.destination.home.HomeDestination,
+            inclusive = false,
+        )
         reloadDestination(com.maxrave.simpmusic.ui.navigation.destination.home.HomeDestination::class)
     }
 

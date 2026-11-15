@@ -96,7 +96,6 @@ import com.maxrave.common.NETEASE_MV_MEDIA_ID_PREFIX
 import com.maxrave.common.NETEASE_RADIO_SEARCH_RESULT_TYPE
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.data.model.browse.album.Track
-import com.maxrave.logger.Logger
 import com.maxrave.domain.data.model.intent.GenericIntent
 import com.maxrave.domain.data.model.searchResult.albums.AlbumsResult
 import com.maxrave.domain.data.model.searchResult.artists.ArtistsResult
@@ -224,10 +223,6 @@ fun SearchScreen(
     // 原实现只回落 tab 从不重搜——切源后结果页永远停留旧源内容(SEARCHPROBE 实测:
     // effect 正常触发但无任何 searchXxx 调用,网易结果在 YTM 源下停留 5s+ 不动)。
     LaunchedEffect(isNeteaseSource) {
-        Logger.w(
-            "SEARCHPROBE",
-            "source effect fired: isNetease=$isNeteaseSource tab=${searchScreenState.searchType} uiType=$searchUIType",
-        )
         val effectiveTab =
             if (isNeteaseSource && searchScreenState.searchType !in NETEASE_SEARCH_TABS) {
                 searchViewModel.setSearchType(SearchType.ALL)
@@ -236,7 +231,6 @@ fun SearchScreen(
                 searchScreenState.searchType
             }
         if (searchText.isNotEmpty() && searchUIType == SearchUIType.SEARCH_RESULTS) {
-            Logger.w("SEARCHPROBE", "re-dispatch '$searchText' on source switch, tab=$effectiveTab")
             when (effectiveTab) {
                 SearchType.ALL -> searchViewModel.searchAll(searchText)
                 SearchType.SONGS -> searchViewModel.searchSongs(searchText)

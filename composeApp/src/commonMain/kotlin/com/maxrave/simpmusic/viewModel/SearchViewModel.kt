@@ -381,7 +381,6 @@ class SearchViewModel(
     }
 
     fun searchSongs(query: String) {
-        Logger.w("SEARCHPROBE", "searchSongs: '$query'")
         lastQuery = query
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -449,7 +448,6 @@ class SearchViewModel(
     }
 
     fun searchAll(query: String) {
-        Logger.w("SEARCHPROBE", "searchAll: '$query'")
         cancelInFlightSearch()
         // 聚合即 ALL 搜索,开头先落 tab 选中态(发布前的 Loading 期 chip 不滞后)
         _searchScreenState.update { it.copy(searchType = SearchType.ALL) }
@@ -578,7 +576,6 @@ class SearchViewModel(
                 )
             val failedCategories = categoryTypes.filterIndexed { index, _ -> !oks[index] }.toSet()
             if (failedCategories.isNotEmpty()) {
-                Logger.w("SEARCHPROBE", "searchAll partial failures: $failedCategories")
             }
 
             try {
@@ -648,7 +645,6 @@ class SearchViewModel(
     }
 
     fun searchAlbums(query: String) {
-        Logger.w("SEARCHPROBE", "searchAlbums: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -683,7 +679,6 @@ class SearchViewModel(
     }
 
     fun searchFeaturedPlaylist(query: String) {
-        Logger.w("SEARCHPROBE", "searchFeaturedPlaylist: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -718,7 +713,6 @@ class SearchViewModel(
     }
 
     fun searchPodcast(query: String) {
-        Logger.w("SEARCHPROBE", "searchPodcast: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -753,7 +747,6 @@ class SearchViewModel(
     }
 
     fun searchArtists(query: String) {
-        Logger.w("SEARCHPROBE", "searchArtists: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -788,7 +781,6 @@ class SearchViewModel(
     }
 
     fun searchPlaylists(query: String) {
-        Logger.w("SEARCHPROBE", "searchPlaylists: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -823,7 +815,6 @@ class SearchViewModel(
     }
 
     fun searchVideos(query: String) {
-        Logger.w("SEARCHPROBE", "searchVideos: '$query'")
         // 纳入在途取消:新搜索/切源重派取消旧请求,旧源晚到结果不再覆盖新源
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Loading
@@ -867,7 +858,6 @@ class SearchViewModel(
         // 点已选中的 chip = 无操作:不取消在途请求不覆写状态(加载中误触自己
         // 曾把请求掐掉,页面停在旧结果/"无结果")
         if (_searchScreenState.value.searchType == searchType) return
-        Logger.w("SEARCHPROBE", "setSearchType -> $searchType")
         cancelInFlightSearch()
         _searchScreenUIState.value = SearchScreenUIState.Success
         _searchScreenState.update { state ->

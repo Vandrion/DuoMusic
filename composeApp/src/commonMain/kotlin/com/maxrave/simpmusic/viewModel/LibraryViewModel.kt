@@ -324,9 +324,7 @@ class LibraryViewModel(
                 launch {
                     // 运行中登出网易:停在"您的网易云"tab 时弹回,并清数据防下次登入闪旧内容
                     dataStoreManager.neteaseCookie.distinctUntilChanged().collect { cookie ->
-                        com.maxrave.logger.Logger.w("LIBPROBE", "cookie emission len=${cookie.length}")
                         if (cookie.isEmpty()) {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "logout reset: clearing netease sections (was on ${_currentScreen.value})")
                             if (_currentScreen.value == LibraryChipType.NETEASE_PLAYLIST) {
                                 setCurrentScreen(defaultLibraryChip())
                             }
@@ -385,7 +383,6 @@ class LibraryViewModel(
         )
 
     fun setCurrentScreen(chipType: LibraryChipType) {
-        com.maxrave.logger.Logger.w("LIBPROBE", "setCurrentScreen -> $chipType")
         screenChosen = true
         _currentScreen.value = chipType
         viewModelScope.launch {
@@ -517,7 +514,6 @@ class LibraryViewModel(
             _neteasePlaylist.value.data == null &&
                 _subscribedArtists.value.data == null &&
                 _starredAlbums.value.data == null
-        com.maxrave.logger.Logger.w("LIBPROBE", "getNeteaseLibrary force=$force firstLoad=$firstLoad (pl=${_neteasePlaylist.value::class.simpleName})")
         if (firstLoad) {
             _neteasePlaylist.value = LocalResource.Loading()
             _subscribedArtists.value = LocalResource.Loading()
@@ -529,7 +525,6 @@ class LibraryViewModel(
                 launch {
                     neteaseRepository.getLibraryPlaylists().fold(
                         onSuccess = {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "playlists ok size=${it.size}")
                             _neteasePlaylist.value = LocalResource.Success(it)
                             _ownNeteasePlaylistIds.value = neteaseRepository.getOwnNeteasePlaylistIds()
                             _neteaseLikedPlaylistId.value = neteaseRepository.getNeteaseLikedPlaylistIdCached()
@@ -538,7 +533,6 @@ class LibraryViewModel(
                             playlistRepository.reconcileLikedNeteasePlaylists(it.map { p -> p.id }.toSet())
                         },
                         onFailure = {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "playlists FAIL: ${it.message}")
                             _neteasePlaylist.value = LocalResource.Error(it.message ?: "netease playlists failed")
                         },
                     )
@@ -546,7 +540,6 @@ class LibraryViewModel(
                 launch {
                     neteaseRepository.getSubscribedArtists(force).fold(
                         onSuccess = {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "artists ok size=${it.size}")
                             _subscribedArtists.value = LocalResource.Success(it.toList())
                         },
                         onFailure = { _subscribedArtists.value = LocalResource.Error(it.message ?: "subscribed artists failed") },
@@ -555,11 +548,9 @@ class LibraryViewModel(
                 launch {
                     neteaseRepository.getStarredAlbums(force).fold(
                         onSuccess = {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "albums ok size=${it.size}")
                             _starredAlbums.value = LocalResource.Success(it.toList())
                         },
                         onFailure = {
-                            com.maxrave.logger.Logger.w("LIBPROBE", "albums/artists FAIL: ${it.message}")
                             _starredAlbums.value = LocalResource.Error(it.message ?: "starred albums failed")
                         },
                     )

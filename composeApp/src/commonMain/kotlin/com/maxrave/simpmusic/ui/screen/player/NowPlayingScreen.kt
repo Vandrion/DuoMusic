@@ -93,7 +93,6 @@ import com.maxrave.common.MERGING_DATA_TYPE
 import com.maxrave.domain.extension.isVideo
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.mediaservice.handler.MediaPlayerHandler
-import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.Platform
 import com.maxrave.simpmusic.expect.ui.PlatformBackHandler
 import com.maxrave.simpmusic.expect.ui.rememberVideoAspectRatio
@@ -172,8 +171,6 @@ import simpmusic.composeapp.generated.resources.delete_from_cloud_disk_message
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.abs
 
-private const val TAG = "NowPlayingScreen"
-
 // Desktop's fullscreen lyrics page: in a little slower than out, so opening reads as arriving and
 // closing gets out of the way.
 private const val FULLSCREEN_LYRICS_ENTER_MS = 300
@@ -215,7 +212,6 @@ fun NowPlayingScreen(
                     val h = contentHeightPx
                     val off = sheetStateRef?.requireOffset() ?: 0f
                     val allow = programmaticHide || h <= 0 || off >= h * SHEET_DISMISS_MIN_FRACTION
-                    if (!allow) Logger.w(TAG, "Confirm veto: off=${off.toInt()}px")
                     allow
                 }
             },
@@ -395,7 +391,6 @@ private fun Modifier.earlySheetDismissFallback(
                         // 松手:过线滑出+出栈,否则弹回
                         if (pulling) {
                             if (accY >= thresholdPx) {
-                                Logger.w(TAG, "Locked-window pull dismissed (accY=${accY.toInt()}px)")
                                 HapticFeedback.tap()
                                 animatePullTo(contentH.toFloat(), tween(200, easing = LinearOutSlowInEasing)) { currentGone() }
                             } else {
@@ -768,7 +763,6 @@ fun NowPlayingScreenContent(
     }
 
     LaunchedEffect(screenDataState) {
-        Logger.d(TAG, "ScreenDataState: $screenDataState")
         // Only a canvas that fills the page replaces it; animated artwork sits at its top.
         showHideMiddleLayout = screenDataState.fullscreenCanvas() == null
     }
@@ -804,10 +798,6 @@ fun NowPlayingScreenContent(
                 // use, so the palette ramp resolves into the surface instead of a black patch.
                 endColor.animateTo(PlayerBackdropColor)
             }
-    }
-
-    LaunchedEffect(spotShadowColor) {
-        Logger.d(TAG, "spotShadowColor: $spotShadowColor")
     }
 
     // (perf) slider drag state moved into each style's playback controls — the shell no longer
@@ -1399,7 +1389,6 @@ fun NowPlayingScreenContent(
                 mediaPlayerHandler.queueData.value?.data?.listTracks
                     ?.firstOrNull { it.videoId == vid }?.album?.id?.toLongOrNull()
                     ?: run { value = ""; return@produceState }
-            com.maxrave.logger.Logger.w("PodcastComments", "resolving programId for $vid in radio $radioId")
             var found: Long? = null
             var offset = 0
             // 最多翻 5 页×30=150 期,覆盖绝大多数电台
@@ -1416,7 +1405,6 @@ fun NowPlayingScreenContent(
                 if (!page.second) break
                 offset += page.first.size
             }
-            com.maxrave.logger.Logger.w("PodcastComments", "resolved programId=$found")
             value = found?.let { "A_DJ_1_$it" } ?: ""
         }
     if (showNeteaseComments) {

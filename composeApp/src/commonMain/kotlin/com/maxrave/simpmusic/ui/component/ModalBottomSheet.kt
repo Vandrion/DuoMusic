@@ -5429,7 +5429,6 @@ fun NeteaseCommentsSheet(
 
     fun loadMore() {
         if (isPodcast && commentThreadId == null) return
-        com.maxrave.logger.Logger.w("NeteaseComments", "loadMore called: loading=$loading loadingMore=$loadingMore hasMore=$hasMore cursor=$cursor size=${comments.size}")
         if (loading || loadingMore || !hasMore) return
         val next = cursor ?: return
         loadingMore = true
@@ -6119,7 +6118,6 @@ fun NeteaseCommentsSheet(
                                     // 尾部占位滚进组合视口(LazyColumn 预组合=近底)即自动翻页;
                                     // key 挂列表长度,每页落地后自然续拉下一页
                                     LaunchedEffect(comments.size, cursor, sort) {
-                                        com.maxrave.logger.Logger.w("NeteaseComments", "tail effect fired: size=${comments.size} sort=$sort")
                                         loadMore()
                                     }
                                     if (loadingMore) {
