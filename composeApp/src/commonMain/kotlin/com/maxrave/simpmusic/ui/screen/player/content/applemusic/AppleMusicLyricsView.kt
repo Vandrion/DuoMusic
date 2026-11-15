@@ -41,6 +41,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.maxrave.domain.manager.DataStoreManager
@@ -159,6 +160,25 @@ internal fun AppleMusicLyricsView(
             }
         }
 
+    // (fix) 歌词区顶部下拉守卫(用户 2026-11-15):歌词列表滚到顶后的继续下拉(过滚动余量)
+    // 不再喂给 sheet 拖拽——下拉关闭只保留在页面顶部非歌词区(header/标题条),歌词区拉到顶
+    // 就停,不关页。经典 iOS 行为:列表顶的下拉是死路,不是关闭手势。
+    val lyricsTopGuard =
+        remember {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset = if (source == NestedScrollSource.Drag && available.y > 0f) available else Offset.Zero
+
+                override suspend fun onPostFling(
+                    consumed: Velocity,
+                    available: Velocity,
+                ): Velocity = if (available.y > 0f) available else Velocity.Zero
+            }
+        }
+
     Column(modifier = modifier.fillMaxSize()) {
         // statusBars + 20dp, not a bare status-bar offset: the grabber that
         // NowPlayingContentAppleMusic draws above the view Crossfade floats over this column, and
@@ -176,6 +196,7 @@ internal fun AppleMusicLyricsView(
             modifier =
                 Modifier
                     .weight(1f)
+                    .nestedScroll(lyricsTopGuard)
                     .nestedScroll(scrollWakesControls)
                     // The lyric LINES consume their own taps to seek, so this only ever fires on
                     // the gutter and the gaps between lines — which is exactly the "tap the page,
