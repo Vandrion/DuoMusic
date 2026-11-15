@@ -427,8 +427,8 @@ private fun Modifier.earlySheetDismissFallback(
                     }
                     if (dy > 0f) {
                         accY += dy
-                        // 下拉启动门槛(18px):起手抖动不足以上膛,跨过后才接管跟手
-                        if (!pulling && accY < LOCK_PULL_START_SLOP) return@awaitEachGesture
+                        // 注:不再设启动门槛——上方的"纯上滑即时放行"分支已防抖动误吞,
+                        // 门槛版曾写成"未满即 return 丢弃整条手势"=开页立即下拉失灵回归
                         pulling = true
                         // 锁窗内跟手:内容层位移 1:1(消费,防锁中途释放后库双重接管)
                         change.consume()
@@ -447,8 +447,6 @@ private fun Modifier.earlySheetDismissFallback(
 // 锁窗内自绘关闭线=内容高 15%(开页后快速下拉关页的顺手距离)。
 private const val SHEET_DISMISS_FRACTION = 0.15f
 
-// 锁窗下拉启动门槛(px):起手抖动(几像素向下)不捕获,防误吞上滑手势的真机实测坑
-private const val LOCK_PULL_START_SLOP = 18f
 
 // confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
 // "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
