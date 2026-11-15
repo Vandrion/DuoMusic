@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -193,17 +194,25 @@ fun NowPlayingContentSoundCloud(
         showLyrics = false
     }
     Crossfade(targetState = showLyrics, animationSpec = tween(300), label = "soundCloudView") { lyrics ->
-        if (lyrics) {
-            SoundCloudLyricsPage(state = state, actions = actions, onBack = { showLyrics = false })
-        } else {
-            NowPlayingExpressiveTheme(state = state) {
-                NowPlayingSoundCloudLayout(
-                    state = state,
-                    actions = actions,
-                    waveformColor = appPrimary,
-                    // Nothing without lyrics, as the Apple Music style's Lyrics pill is disabled then.
-                    onOpenLyrics = { if (state.screenData.lyricsData != null) showLyrics = true },
-                )
+        // Fork(AM 性能批 c0cf49bb 同款先例):Android 播放页不跑玻璃管线——本主题玻璃元件
+        // 多达十余个(全屏 layerBackdrop 采集+每个玻璃件逐帧 vibrancy/colorControls/blur/lens),
+        // 叠加 120Hz 稳态重绘是真机卡顿大头;设置开关开着也在 Android 强制走静态兜底
+        // (liquidGlass 自带的 surfaceContainerHighest 80% 圆底,形状命中区不变)。
+        // 桌面 GPU 预算不同,玻璃保留。
+        val forceStaticGlass = remember { getPlatform() == Platform.Android }
+        CompositionLocalProvider(LocalLiquidGlassEnabled provides !forceStaticGlass) {
+            if (lyrics) {
+                SoundCloudLyricsPage(state = state, actions = actions, onBack = { showLyrics = false })
+            } else {
+                NowPlayingExpressiveTheme(state = state) {
+                    NowPlayingSoundCloudLayout(
+                        state = state,
+                        actions = actions,
+                        waveformColor = appPrimary,
+                        // Nothing without lyrics, as the Apple Music style's Lyrics pill is disabled then.
+                        onOpenLyrics = { if (state.screenData.lyricsData != null) showLyrics = true },
+                    )
+                }
             }
         }
     }

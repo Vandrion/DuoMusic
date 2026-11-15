@@ -296,6 +296,9 @@ internal fun rememberSteadyPlayhead(
         var reported = latestRaw
         var reportedAt = -1L
         var lastFrame = -1L
+        // 写入限频 ~60fps:120Hz 屏上每帧写状态=波形/歌词行全速重绘(稳态帧数翻倍),
+        // 波形滑动 60fps 已顺滑(一步 ~1.7px),积分照算只省无效写。
+        var lastWrite = -1L
         while (true) {
             withInfiniteAnimationFrameNanos { now ->
                 if (reportedAt < 0L || latestRaw != reported) {
@@ -314,7 +317,10 @@ internal fun rememberSteadyPlayhead(
                     } else {
                         position + step + (trend - position) * (step / STEADY_DRIFT_MS).coerceAtMost(1.0)
                     }
-                playhead.longValue = position.roundToLong()
+                if (lastWrite < 0L || now - lastWrite >= WRITE_INTERVAL_NS) {
+                    lastWrite = now
+                    playhead.longValue = position.roundToLong()
+                }
             }
         }
     }
@@ -324,4 +330,5 @@ internal fun rememberSteadyPlayhead(
 private const val STEADY_DRIFT_MS = 3_000.0
 private const val STEADY_SNAP_MS = 2_000.0
 private const val STEADY_MAX_CARRY_MS = 1_000.0
+private const val WRITE_INTERVAL_NS = 15_000_000L // ~60fps 上限
 private const val FLAT_LEVEL = 0.04f
