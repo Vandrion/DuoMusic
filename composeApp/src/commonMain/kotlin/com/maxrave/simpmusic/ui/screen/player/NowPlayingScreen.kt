@@ -229,7 +229,10 @@ fun NowPlayingScreen(
         onDismissRequest = {
             onDismiss()
         },
-        containerColor = Color.Black,
+        // Fork(用户 2026-11-15):容器透明——下拉跟手时内容层移走,露出的是 scrim 遮罩下的
+        // 真实主页(与原生 sheet 下拉一致);纯黑/垫色都会在浅色主题下突兀(真机录像实证
+        // 顶部灰白条)。正常态各主题内容自带满屏背景,透明容器不可见。
+        containerColor = Color.Transparent,
         dragHandle = {},
         scrimColor = Color.Black.copy(alpha = .5f),
         sheetState = sheetState,
@@ -246,10 +249,6 @@ fun NowPlayingScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // (fix) 下拉跟手的垫底色:锁窗内 translationY 移动的是内容层(modifier 链上
-                    // graphicsLayer 之后的绘制),此 background 在 layer 之外固定不动——内容层
-                    // 拉走时露出这层主题底色,而不是 sheet 的纯黑容器(containerColor=Black)。
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
                     .onSizeChanged { contentHeightPx = it.height }
                     // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
                     // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet

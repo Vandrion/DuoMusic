@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.Image
@@ -405,8 +406,9 @@ private fun NowPlayingSoundCloudLayout(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(colors.surface)
-                .windowInsetsPadding(WindowInsets.statusBars),
+                .background(colors.surface),
+        // Fork(用户 2026-11-15"封面背景直接铺满"):statusBars padding 不再吃掉整列——封面/
+        // 模糊背景画到屏幕顶,顶部的标签列与角标列自己吃 statusBars 顶部留白。
     ) {
         Box(
             modifier =
@@ -463,6 +465,7 @@ private fun NowPlayingSoundCloudLayout(
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
+                        .statusBarsPadding()
                         .padding(CARD_PADDING)
                         .fillMaxWidth(LABELS_WIDTH_FRACTION),
             ) {
@@ -503,7 +506,7 @@ private fun NowPlayingSoundCloudLayout(
                 visible = !scrubbing,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.TopEnd).padding(CARD_PADDING),
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(CARD_PADDING),
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
