@@ -60,10 +60,15 @@ jobs:
           # beta 分支(dev)发 beta tag(如 v3.13.0-beta.1):Release 标 pre-release;
           # master 正式 tag 无 beta 字样,照常 full release
           if [ "${REL_TAG#*beta}" != "$REL_TAG" ]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+          # beta tag → versionName 注入 tag 后缀(3.13.1-beta.2):app 内可见 beta,且同版本号
+          # 正式版发布后,检查更新对 beta 用户能判出(release != current 是字符串比对,数字
+          # 部分相同也成立)。正式 tag 后缀为空,versionName 保持干净。
+          SUFFIX=$(echo "$REL_TAG" | sed -nE 's/^v[0-9]+\.[0-9]+\.[0-9]+(.*)$/\1/p')
+          echo "version_suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
           echo "App version: $VERSION (tag: $REL_TAG)"
 
       - name: Build arm64 release APK
-        run: ./gradlew :androidApp:assembleRelease -x uploadSentryProguardMappingsRelease --console=plain
+        run: ./gradlew :androidApp:assembleRelease -x uploadSentryProguardMappingsRelease --console=plain "-PappVersionSuffix=${{ steps.ver.outputs.version_suffix }}"
 
       - name: Zipalign & sign
         env:

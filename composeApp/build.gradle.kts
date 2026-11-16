@@ -838,7 +838,12 @@ buildkonfig {
     defaultConfigs {
         val versionName =
             libs.versions.version.name
-                .get()
+                .get() +
+                // CI 发 beta 时注入 tag 后缀(-PappVersionSuffix=-beta.N,见 fork-release.yml):
+                // app 内版本号直接可见 beta,且同版本号正式版发布后检查更新能对 beta 用户
+                // 判出新 release(VersionManager 的 release != current 是字符串比对,数字部分
+                // 相同也成立)。本地构建无此属性,版本号保持干净。
+                (project.findProperty("appVersionSuffix") as String? ?: "")
         val versionCode =
             libs.versions.version.code
                 .get()
