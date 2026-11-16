@@ -39,7 +39,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
@@ -243,7 +245,9 @@ fun NowPlayingScreen(
             if (h <= 0) {
                 0f
             } else {
-                runCatching { sheetState.requireOffset() }.getOrDefault(0f) / h
+                // 锁窗内 sheet 不动(offset 恒 0),进度必须由 fallback 位移补——漏掉它,
+                // "开页立即下拉关页"的整条手势遮罩恒灰透无渐变(2026-11-16 用户复测抓到)。
+                max(runCatching { sheetState.requireOffset() }.getOrDefault(0f), fallbackPullPx) / h
             }
         }
     }
@@ -257,7 +261,20 @@ fun NowPlayingScreen(
     }
 
 
-    ModalBottomSheet(
+    // Fork(2026-11-16"开页顶部上下颤抖"):sheet 的开/关/拖拽动画 spec 全部取自组合里的
+    // MaterialTheme.motionScheme(BottomSheetKt setShowMotionSpec←defaultSpatialSpec 字节码
+    // 在案),而 app 根主题是 MaterialExpressiveTheme——expressive 的 spatial spring 自带
+    // 过冲,sheet 开页到顶后整面回弹 ~0.45s(逐帧实测顶部特征 600→537→573 震荡落定)。
+    // 渐变/大图类主题被满屏内容掩盖,SoundCloud 的黑标签条/圆钮硬边把它放大成明显的
+    // "上下颤抖"。只给 sheet 子树换 standard motion scheme(临界阻尼,平缓到位):
+    // 开/关/拖拽 settle 全部收敛;内容里真正带 expressive 动效的主题(M3E/SoundCloud)
+    // 本来就在自己内部重建 MaterialExpressiveTheme,不受影响。
+    MaterialExpressiveTheme(
+        colorScheme = MaterialTheme.colorScheme,
+        typography = typo(),
+        motionScheme = MotionScheme.standard(),
+    ) {
+        ModalBottomSheet(
         modifier =
             Modifier
                 .fillMaxHeight(),
@@ -361,6 +378,7 @@ fun NowPlayingScreen(
                 },
             )
         }
+    }
     }
 }
 
