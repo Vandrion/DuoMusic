@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -186,23 +187,45 @@ internal fun NowPlayingExpressiveTheme(
     // stray hue the Vibrant style below blows up into a colour the cover does not have (a pink
     // sleeve came out green). The app seed stands in until it resolves, and for a colourless cover.
     val artwork = state.screenData.bitmap
-    val artworkSeed by produceState<Color?>(initialValue = null, artwork) {
+    // Fork(2026-11-16"打开动画突兀"):seed 按曲 id 缓存。sheet 内容每次打开都重建,原实现每开
+    // 必从 app seed 起步、等 bitmap 回来再异步采样,整页配色 800ms tween 漂移,且下面的
+    // rememberDynamicColorScheme 随动画逐帧重建整套色调色板——与 sheet 上滑动画抢帧=掉帧+颜色
+    // 漂移,SoundCloud 大面积平色 surface 上尤其显眼。缓存命中(重开同一首:mediaItem 在播,
+    // 曲 id 第一帧就可得,不用等 bitmap 回来)则第一帧配色直接就位:零漂移、零重建、零采样。
+    // 采样出的 seed 持在上一个组合存活的状态里:切歌采样期间保持旧 seed,动画从旧 seed 滑向
+    // 新 seed,不再中途塌回 app seed。缓存只存色值不持 bitmap;上量整表清掉防无限增长。
+    val frameHitSeed = state.videoId?.let { expressiveSeedCache[it] }
+    var snapPending by remember { mutableStateOf(frameHitSeed != null) }
+    var heldSeed by remember { mutableStateOf(frameHitSeed) }
+    val artworkSeed by produceState<Color?>(initialValue = frameHitSeed, artwork) {
+        if (frameHitSeed != null) return@produceState
         value =
             artwork?.let { image ->
                 withContext(Dispatchers.Default) {
                     runCatching { image.toReadableBitmap(SEED_SAMPLE_PX, SEED_SAMPLE_PX).themeColorOrNull() }.getOrNull()
                 }
             }
+        // 落缓存:bitmap 与 videoId 同帧喂入(key 重启时闭包是最新组合的,两者成对),归到当曲名下。
+        state.videoId?.let { trackId ->
+            if (expressiveSeedCache.size > SEED_CACHE_MAX_ENTRIES) expressiveSeedCache.clear()
+            expressiveSeedCache[trackId] = value
+        }
     }
-    val seedColor = artworkSeed ?: seed
+    LaunchedEffect(artworkSeed) { artworkSeed?.let { heldSeed = it } }
+    val seedColor = heldSeed ?: seed
     // Track changes must GLIDE between palettes: the shell's startColor spring is quick, and a
     // whole tonal scheme snapping at once reads as a flash. 800ms matches the palette crossfade
-    // feel of the other immersive screens.
+    // feel of the other immersive screens. A reopen of the same track snaps instead (snap spec
+    // while the frame-1 cache hit flag stands, cleared as soon as it has fired): its seed was
+    // there from the first frame, so there is nothing to glide from.
     val animatedSeedColor by animateColorAsState(
         targetValue = seedColor,
-        animationSpec = tween(durationMillis = 800),
+        animationSpec = if (snapPending) snap() else tween(durationMillis = 800),
         label = "m3eSeedColor",
     )
+    LaunchedEffect(animatedSeedColor) {
+        if (snapPending && animatedSeedColor == seedColor) snapPending = false
+    }
     val derivedScheme =
         rememberDynamicColorScheme(
             seedColor = animatedSeedColor,
@@ -218,6 +241,12 @@ internal fun NowPlayingExpressiveTheme(
 // The artwork is scored at this size: the seed depends on which colours cover the sleeve and how
 // strongly, which a full-resolution read would only make slower to find.
 private const val SEED_SAMPLE_PX = 112
+
+// Expressive scheme(SoundCloud/M3E 共用)的封面 seed 缓存:曲 id → 采样色(可为 null=采样失败,
+// 也缓存住防每开重采)。见 NowPlayingExpressiveTheme 注释。
+private val expressiveSeedCache = HashMap<String, Color?>()
+
+private const val SEED_CACHE_MAX_ENTRIES = 128
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

@@ -170,6 +170,7 @@ import simpmusic.composeapp.generated.resources.delete_from_cloud_disk_title
 import simpmusic.composeapp.generated.resources.delete_from_cloud_disk_message
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.abs
+import kotlin.math.max
 
 // Desktop's fullscreen lyrics page: in a little slower than out, so opening reads as arriving and
 // closing gets out of the way.
@@ -194,6 +195,9 @@ fun NowPlayingScreen(
     // 下拉激活(拖动跟手中):拖动期间冻结重效果层(iOS 控制中心同款降级渲染——七轮封面
     // "质量锁"同族手法)。锁外=sheet offset 流;锁窗内 sheet 不动,由 fallback 回调补。
     var pullActive by remember { mutableStateOf(false) }
+    // 锁窗内 fallback 的跟手位移(px):下拉进度=它与 sheet offset 取大——锁窗内 sheet 不动
+    // (offset 恒 0),进度由 fallback 补;稳态由 offset 驱动。遮罩渐隐与顶部渐变圆角共用。
+    var fallbackPullPx by remember { mutableFloatStateOf(0f) }
     // 锁窗内上滑→列表滚动转发器(Content 拿到 mainScrollState 后注册)
     var upDragSink by remember { mutableStateOf<((Float) -> Unit)?>(null) }
     var sheetStateRef by remember { mutableStateOf<SheetState?>(null) }
@@ -227,6 +231,22 @@ fun NowPlayingScreen(
             }
         }.collect { pullActive = it > 8f }
     }
+    // Fork(2026-11-16"背景灰透,拉一半才透明"):m3 的 scrim alpha 是 animateFloatAsState(
+    // sheetState.isVisible),而 isVisible=currentValue!=Hidden——拖动中途不随 offset 淡出,
+    // 露出的底页恒被整层黑罩着,过阈/落定才瞬变渐隐(观感="灰透、拉过半才突然透明")。
+    // 改成 offset 驱动:遮罩透明度随下拉距离 1:1 线性渐隐(iOS 关页同款);快甩/BACK 程序化
+    // 关闭同样随关页动画渐隐到底,弹回 Expanded 渐回。Scrim 内部 drawRect(color, alpha=库的
+    // 动画×color.alpha),颜色自身的 alpha 可用。
+    val scrimPullFraction by remember(sheetState) {
+        derivedStateOf {
+            val h = contentHeightPx
+            if (h <= 0) {
+                0f
+            } else {
+                runCatching { sheetState.requireOffset() }.getOrDefault(0f) / h
+            }
+        }
+    }
 
     val hideSheet: () -> Unit = {
         coroutineScope.launch {
@@ -249,7 +269,7 @@ fun NowPlayingScreen(
         // 顶部灰白条)。正常态各主题内容自带满屏背景,透明容器不可见。
         containerColor = Color.Transparent,
         dragHandle = {},
-        scrimColor = Color.Black.copy(alpha = .5f),
+        scrimColor = Color.Black.copy(alpha = SHEET_SCRIM_BASE_ALPHA * (1f - scrimPullFraction.coerceIn(0f, 1f))),
         sheetState = sheetState,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
@@ -306,8 +326,28 @@ fun NowPlayingScreen(
                         onHide = { programmaticHide = true; hideSheet() },
                         onGone = { onDismiss() },
                         onPullActive = { active -> pullActive = active },
+                        onPullProgress = { px -> fallbackPullPx = px },
                         onUpDrag = upDragSink,
-                    ),
+                    )
+                    // Fork(2026-11-16"下拉关页顶部是直角"):渐变圆角——顶部 R 角随下拉距离
+                    // 线性长大(0→SHEET_DISMISS_TOP_CORNER),iOS 关页观感;弹回即收回。进度=
+                    // sheet offset 与锁窗内 fallback 位移取大(都从 snapshot state 读,逐帧不落
+                    // 重组)。必须在 earlySheetDismissFallback 之后挂:它的 translationY 层在
+                    // 本层之外,圆角才跟着内容走;放前面会在屏幕原位裁出一个不动的圆角"洞"。
+                    // 容器透明+offset 驱动遮罩(见上),圆角露出处即渐亮的底页。
+                    .graphicsLayer {
+                        val h = contentHeightPx
+                        val frac =
+                            if (h <= 0) {
+                                0f
+                            } else {
+                                val off = runCatching { sheetState.requireOffset() }.getOrDefault(0f)
+                                max(off, fallbackPullPx) / h
+                            }.coerceIn(0f, 1f)
+                        val corner = SHEET_DISMISS_TOP_CORNER * frac
+                        shape = RoundedCornerShape(topStart = corner, topEnd = corner)
+                        clip = true
+                    },
         ) {
             NowPlayingScreenContent(
                 isPullingDown = pullActive,
@@ -343,6 +383,8 @@ private fun Modifier.earlySheetDismissFallback(
     onHide: () -> Unit,
     onGone: () -> Unit,
     onPullActive: (Boolean) -> Unit = {},
+    /** 锁窗内跟手位移(px,壳层拿它与 sheet offset 取大驱动遮罩渐隐/渐变圆角)。 */
+    onPullProgress: (Float) -> Unit = {},
     /** 锁窗内上滑转发(经典/M3E 整页列表):dy<0 原样转发 dispatchRawDelta 真滚列表——
      *  库动画锁(~1s)阻塞一切嵌套分发,列表自己的手势也被吞,不转发=开页立即上滑失灵
      *  (真机实测 0.8s 仍失灵/1.2s 恢复)。null=主题无可滚列表,上滑交还。 */
@@ -353,6 +395,7 @@ private fun Modifier.earlySheetDismissFallback(
     val currentHide by rememberUpdatedState(onHide)
     val currentGone by rememberUpdatedState(onGone)
     val currentPullActive by rememberUpdatedState(onPullActive)
+    val currentPullProgress by rememberUpdatedState(onPullProgress)
     val currentUpDrag by rememberUpdatedState(onUpDrag)
     var contentHeightPx by remember { mutableIntStateOf(0) }
     // 锁窗内的跟手位移:直写 state(graphicsLayer 快照读,逐帧不落重组);动画段用一次性
@@ -368,6 +411,7 @@ private fun Modifier.earlySheetDismissFallback(
             FloatAnimatable(lockedPullY).animateTo(target, spec) {
                 lockedPullY = value
                 currentPullActive(value > 4f && target > 4f)
+                currentPullProgress(value)
             }
             onEnd()
         }
@@ -429,10 +473,12 @@ private fun Modifier.earlySheetDismissFallback(
                         change.consume()
                         lockedPullY = accY
                         currentPullActive(accY > 4f)
+                        currentPullProgress(accY)
                     } else if (dy < 0f && pulling) {
                         accY = (accY + dy).coerceAtLeast(0f)
                         change.consume()
                         lockedPullY = accY
+                        currentPullProgress(accY)
                     }
                 }
             }
@@ -446,6 +492,12 @@ private const val SHEET_DISMISS_FRACTION = 0.15f
 // confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
 // "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
 private const val SHEET_DISMISS_MIN_FRACTION = 0.08f
+
+// 下拉遮罩的静止态透明度(原恒定 .5f;现在下拉时按 1f-pullFraction 从这里线性渐隐到 0)。
+private const val SHEET_SCRIM_BASE_ALPHA = 0.5f
+
+// 下拉关页顶部渐变圆角的上限(拉满一屏时),对齐 material sheet 默认圆角档。
+private val SHEET_DISMISS_TOP_CORNER = 28.dp
 
 // 打开后的动画锁窗:盖住"动画未启动"的几帧(动画本体 ~400ms 由 isAnimationRunning 覆盖)。
 // 曾取 800ms——真机"开页立即上滑失灵第二次才行"反馈后收紧:库动画锁会阻塞嵌套滚动
