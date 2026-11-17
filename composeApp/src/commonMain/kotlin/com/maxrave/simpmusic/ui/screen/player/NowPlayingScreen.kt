@@ -332,20 +332,25 @@ fun NowPlayingScreen(
                     .fillMaxSize()
                     .onSizeChanged { contentHeightPx = it.height }
                     .onGloballyPositioned { contentBoxPosInWindow = it.positionInWindow() }
-                    // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
-                    // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet
-                    // 实时 offset 判定——veto 线(SHEET_DISMISS_MIN_FRACTION)之上的拉距松手
-                    // 即关,预告线取同一值。同层顺带采样手势纵向速度(confirmValueChange 的
-                    // flick 放行判据用;settle 决策早于 up 事件的 Final 通道,所以每个 move
-                    // 都实时算一次写入,up 时少采这一个点不影响速度)。🚨采样必须用窗口坐标
-                    // positionInWindow():原生下拉时 sheet 表面跟手 1:1 平移,指针的局部
-                    // 坐标位移≈0,局部坐标速度恒为噪声(实测 -137px/s,方向都是反的,
-                    // 探针在 confirm 决策瞬间抓到的真实读数 off=122/vel=-137)。
+                    // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中手势进入
+                    // "松手即关"状态时给一次震感(iOS 式预告,armed 单次,回落重置)。判据与
+                    // confirmValueChange 的放行线同构(位置 8% 线 OR 速度+4% 门槛)——快扫在
+                    // 4%-8% 区间即可触发关闭,预告线只挂 8% 会让该区间零预告直接关。同层顺带
+                    // 采样手势纵向速度(confirmValueChange 的 flick 放行判据用;settle 决策
+                    // 早于 up 事件的 Final 通道,所以每个 move 都实时算一次写入,up 时少采
+                    // 这一个点不影响速度)。🚨采样必须用窗口坐标(局部 position+contentBox
+                    // PosInWindow):原生下拉时 sheet 表面跟手 1:1 平移,指针的局部坐标位移
+                    // ≈0,局部速度恒为噪声(实测 -137px/s,方向都是反的,探针在 confirm
+                    // 决策瞬间抓到的真实读数 off=122/vel=-137)。
                     .pointerInput(sheetState, contentHeightPx) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val velocityTracker = VelocityTracker()
                             velocityTracker.resetTracking()
+                            // 新手势开始即清零:confirm 决策若发生在本手势采到首个有效速度
+                            // 之前(极快 flick 的 settle 可能先于第二个 move),读到上一手势
+                            // 的残留速度=本应拦下的短慢拖被旧速度放行
+                            lastGestureVelocityY = 0f
                             var hapticArmed = true
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
@@ -367,10 +372,18 @@ fun NowPlayingScreen(
                                             null
                                         }
                                     if (off != null) {
-                                        if (hapticArmed && off >= h * SHEET_DISMISS_MIN_FRACTION) {
+                                        // 预告线与关闭判据同构:位置越过 8% 线,或速度已达
+                                        // flick 放行线且位移过 4% 门槛(该手势松手必关)。
+                                        // 快扫在 4%-8% 区间就能触发关闭,预告必须同样前移,
+                                        // 否则该区间直接关页零预告。
+                                        val willDismissByPosition = off >= h * SHEET_DISMISS_MIN_FRACTION
+                                        val willDismissByFlick =
+                                            off >= h * SHEET_DISMISS_FLICK_MIN_FRACTION &&
+                                                abs(lastGestureVelocityY) > dismissFlickVelocityPx
+                                        if (hapticArmed && (willDismissByPosition || willDismissByFlick)) {
                                             hapticArmed = false
                                             HapticFeedback.tap()
-                                        } else if (!hapticArmed && off < h * SHEET_DISMISS_MIN_FRACTION) {
+                                        } else if (!hapticArmed && !willDismissByPosition && !willDismissByFlick) {
                                             hapticArmed = true
                                         }
                                     }
