@@ -94,6 +94,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.maxrave.logger.Logger
 import com.kmpalette.rememberPaletteState
 import com.maxrave.common.Config.MAIN_PLAYER
 import com.maxrave.common.MERGING_DATA_TYPE
@@ -241,6 +242,12 @@ fun NowPlayingScreen(
                             off >= h * SHEET_DISMISS_MIN_FRACTION ||
                             (off >= h * SHEET_DISMISS_FLICK_MIN_FRACTION &&
                                 abs(lastGestureVelocityY) > dismissFlickVelocityPx)
+                    // 诊断日志(真机取证):库决定去 Hidden 瞬间的完整裁决输入——vel/off 与
+                    // 阈值的距离直接指示该调哪条线(位移不够 or 速度不够 or 已放行)。
+                    Logger.w(
+                        SHEET_VETO_LOG_TAG,
+                        "confirm off=${off.toInt()} h=$h vel=${lastGestureVelocityY.toInt()} thr=${dismissFlickVelocityPx.toInt()} allow=$allow",
+                    )
                     allow
                 }
             },
@@ -355,7 +362,17 @@ fun NowPlayingScreen(
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!change.pressed) break
+                                if (!change.pressed) {
+                                    // 诊断日志(真机取证,W 级落文件日志,设置可导出):手势结束时
+                                    // 的实测速度与 sheet 实际位移。off≈0=手势被子层消费/没到达
+                                    // sheet;off 大=跟手了,结局在 confirm 或库的位置规则。
+                                    val offAtUp = runCatching { sheetState.requireOffset() }.getOrDefault(-1f)
+                                    Logger.w(
+                                        SHEET_VETO_LOG_TAG,
+                                        "up vel=${lastGestureVelocityY.toInt()} off=${offAtUp.toInt()} start=${down.position.y.toInt()}",
+                                    )
+                                    break
+                                }
                                 velocityTracker.addPosition(change.uptimeMillis, change.position + contentBoxPosInWindow)
                                 // 每个 move 实时写:confirmValueChange 在 settle 决策期被调,
                                 // 早于本 up 事件的 Final 通道——结束时才写会拿到上一个手势的
@@ -518,6 +535,10 @@ private fun Modifier.earlySheetDismissFallback(
                         // 不依赖高度,只有这条阈值线依赖,此时 Box 早已量完。
                         if (pulling) {
                             val contentH = contentHeightPx
+                            Logger.w(
+                                SHEET_VETO_LOG_TAG,
+                                "fb release accY=${accY.toInt()} thr=${if (contentH > 0) (contentH * SHEET_DISMISS_FRACTION).toInt() else -1}",
+                            )
                             if (contentH > 0 && accY >= contentH * SHEET_DISMISS_FRACTION) {
                                 HapticFeedback.tap()
                                 animatePullTo(contentH.toFloat(), tween(200, easing = LinearOutSlowInEasing)) { currentGone() }
@@ -558,6 +579,7 @@ private fun Modifier.earlySheetDismissFallback(
                         if (abs(sumY) >= viewConfiguration.touchSlop) {
                             if (sumY > 0f) {
                                 pulling = true
+                                Logger.w(SHEET_VETO_LOG_TAG, "fb engage(锁窗内兜底接管)")
                                 accY = sumY
                                 change.consume()
                                 lockedPullY = accY
@@ -641,6 +663,13 @@ private fun scrimFadeAlpha(pullFraction: Float): Float {
 
 // 下拉关页顶部渐变圆角的上限(拉满一屏时),对齐 material sheet 默认圆角档。
 private val SHEET_DISMISS_TOP_CORNER = 28.dp
+
+// 下滑关页链路的诊断日志 tag(真机取证用,W 级落 app 文件日志,设置→导出日志可取回;
+// 三星 release 的 logcat/println 被 ROM 静默,只有这条通道可靠):
+//   "up vel=.. off=.. start=.."   = 手势结束(内容层观察):off≈0=手势被子层消费没到 sheet
+//   "confirm off=.. vel=.. allow=" = 库决定去 Hidden 瞬间的裁决输入
+//   "fb engage/release"           = 壳层锁窗兜底接管(translationY 路径)
+private const val SHEET_VETO_LOG_TAG = "SheetVeto"
 
 // 打开后的动画锁窗:盖住"动画未启动"的几帧(动画本体 ~400ms 由 isAnimationRunning 覆盖)。
 // 曾取 800ms——真机"开页立即上滑失灵第二次才行"反馈后收紧:库动画锁会阻塞嵌套滚动
