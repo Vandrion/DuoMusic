@@ -35,6 +35,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -61,6 +62,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -269,7 +271,7 @@ fun NowPlayingScreen(
     // 改成 offset 驱动:遮罩透明度随下拉距离 1:1 线性渐隐(iOS 关页同款);快甩/BACK 程序化
     // 关闭同样随关页动画渐隐到底,弹回 Expanded 渐回。Scrim 内部 drawRect(color, alpha=库的
     // 动画×color.alpha),颜色自身的 alpha 可用。
-    val scrimPullFraction by remember(sheetState) {
+    val scrimPullFractionState = remember(sheetState) {
         derivedStateOf {
             val h = contentHeightPx
             if (h <= 0) {
@@ -299,33 +301,14 @@ fun NowPlayingScreen(
     // "上下颤抖"。只给 sheet 子树换 standard motion scheme(临界阻尼,平缓到位):
     // 开/关/拖拽 settle 全部收敛;内容里真正带 expressive 动效的主题(M3E/SoundCloud)
     // 本来就在自己内部重建 MaterialExpressiveTheme,不受影响。
-    MaterialExpressiveTheme(
-        colorScheme = MaterialTheme.colorScheme,
-        typography = typo(),
-        motionScheme = MotionScheme.standard(),
-    ) {
-        ModalBottomSheet(
-        modifier =
-            Modifier
-                .fillMaxHeight(),
-        onDismissRequest = {
-            onDismiss()
-        },
-        // Fork(用户 2026-11-15):容器透明——下拉跟手时内容层移走,露出的是 scrim 遮罩下的
-        // 真实主页(与原生 sheet 下拉一致);纯黑/垫色都会在浅色主题下突兀(真机录像实证
-        // 顶部灰白条)。正常态各主题内容自带满屏背景,透明容器不可见。
-        containerColor = Color.Transparent,
-        dragHandle = {},
-        // 遮罩透明度走"前段归零+量化"曲线(见 SHEET_SCRIM_FADE_END / SHEET_SCRIM_ALPHA_STEPS
-        // 常量处注释):derived 值量化后只在步进边界变化,拖动中本 scope 的重组从逐帧降到
-        // 十几次;顶部渐变圆角仍在 graphicsLayer 里按未量化 frac 逐帧画(draw 层零重组)。
-        scrimColor =
-            Color.Black.copy(
-                alpha = SHEET_SCRIM_BASE_ALPHA * scrimFadeAlpha(scrimPullFraction),
-            ),
+    // 宿主隔离(2026-11-17"渐变屏闪"修复):遮罩透明度回归**连续**曲线(量化 16 级在
+    // 120Hz 真机上读作亮度阶跃=屏闪),scrimColor 逐帧变化只驱动这个极小宿主重组——
+    // 内容 lambda 由本函数(拖动期间安静)创建、实例稳定,ModalBottomSheet 的内容子树
+    // 全程跳过重组。此前量化就是为了压重组次数,宿主隔离后不再需要。
+    ScrimFadeSheetHost(
+        scrimFraction = scrimPullFractionState,
         sheetState = sheetState,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-        shape = RectangleShape,
+        onDismissRequest = onDismiss,
     ) {
         // BACK 关页自己接(handler 须在 popup 内容内层注册才赢过 sheet 内部 back;外层窗口
         // 的 handler 收不到 popup 的 back):库的 back→Hidden 路径同样过 confirmValueChange,
@@ -485,6 +468,40 @@ fun NowPlayingScreen(
             )
         }
     }
+}
+
+/**
+ * 遮罩渐隐宿主:唯一读 scrimFraction 的组合点。alpha 逐帧变(拖动跟随 offset),
+ * 重组被限制在本函数内——content 由调用方创建(拖动期间实例稳定),sheet 内容
+ * 子树不因遮罩变化而重组。主题包裹(standard motion)与透明容器的说明见调用处历史注释。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScrimFadeSheetHost(
+    scrimFraction: State<Float>,
+    sheetState: SheetState,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    MaterialExpressiveTheme(
+        colorScheme = MaterialTheme.colorScheme,
+        typography = typo(),
+        motionScheme = MotionScheme.standard(),
+    ) {
+        ModalBottomSheet(
+            modifier = Modifier.fillMaxHeight(),
+            onDismissRequest = onDismissRequest,
+            containerColor = Color.Transparent,
+            dragHandle = {},
+            scrimColor =
+                Color.Black.copy(
+                    alpha = SHEET_SCRIM_BASE_ALPHA * scrimFadeAlpha(scrimFraction.value),
+                ),
+            sheetState = sheetState,
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+            shape = RectangleShape,
+            content = content,
+        )
     }
 }
 
@@ -694,12 +711,10 @@ private const val SHEET_SCRIM_BASE_ALPHA = 0.5f
  *    值只在步进边界变化,重组次数从每帧一降到整程十几次(0.03/步的亮度差不可辨)。
  */
 private const val SHEET_SCRIM_FADE_END = 0.45f
-private const val SHEET_SCRIM_ALPHA_STEPS = 16
 
 private fun scrimFadeAlpha(pullFraction: Float): Float {
     val frac = pullFraction.coerceIn(0f, 1f)
-    val fade = (1f - frac / SHEET_SCRIM_FADE_END).coerceIn(0f, 1f)
-    return (fade * SHEET_SCRIM_ALPHA_STEPS).toInt() / SHEET_SCRIM_ALPHA_STEPS.toFloat()
+    return (1f - frac / SHEET_SCRIM_FADE_END).coerceIn(0f, 1f)
 }
 
 // 下拉关页顶部渐变圆角的上限(拉满一屏时),对齐 material sheet 默认圆角档。
