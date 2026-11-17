@@ -270,6 +270,10 @@ class NowPlayingBottomSheetViewModel(
                     currentNeteaseIdentity == null || currentNeteaseIdentity == startIdentity
                 result
                     .onSuccess { list ->
+                        com.maxrave.logger.Logger.w(
+                            "AddToPlaylist",
+                            "netease load ok size=${list.size} fresh=$identityStillCurrent",
+                        )
                         if (identityStillCurrent) {
                             _uiState.update { it.copy(listNeteasePlaylist = list) }
                         } else {
@@ -279,6 +283,13 @@ class NowPlayingBottomSheetViewModel(
                             )
                         }
                     }.onFailure { e ->
+                        // 诊断(2026-11-17"冷启首开网易列表空"):notLogged 分支清列表且不置
+                        // failed=UI 无重试行,与"未知 cookie 渲染成未登录"的观感相同——
+                        // 真机复现时靠这行区分是服务端判登出还是别的。
+                        com.maxrave.logger.Logger.w(
+                            "AddToPlaylist",
+                            "netease load fail: ${e::class.simpleName} ${e.message}",
+                        )
                         if (e is NeteaseNotLoggedInException) {
                             _uiState.update { it.copy(listNeteasePlaylist = null, neteasePlaylistsFailed = false) }
                         } else if (identityStillCurrent) {

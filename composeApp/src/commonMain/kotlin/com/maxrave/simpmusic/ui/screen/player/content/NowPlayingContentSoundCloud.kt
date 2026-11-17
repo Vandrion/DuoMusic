@@ -124,6 +124,8 @@ import com.maxrave.simpmusic.ui.icon.Headphones
 import com.maxrave.simpmusic.ui.icon.Lyrics
 import com.maxrave.simpmusic.ui.icon.MoreVert
 import com.maxrave.simpmusic.ui.icon.PlayArrow
+import com.maxrave.simpmusic.ui.icon.AddCircleOutline
+import com.maxrave.simpmusic.ui.icon.CheckCircle
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
 import com.maxrave.simpmusic.ui.icon.QueueMusic
 import com.maxrave.simpmusic.ui.icon.Repeat
@@ -540,9 +542,18 @@ private fun NowPlayingSoundCloudLayout(
                         tint = if (state.screenData.lyricsData != null) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
                         onClick = onOpenLyrics,
                     )
-                    // Fork(2026-11-17 用户定案):add-to-YouTube-Liked 角钮删除——底部红心已
-                    // 统一接管云端喜欢(收藏体系云端化终稿口径),YT 歌双喜欢入口纯冗余;
-                    // "加入已喜欢播放列表"跟着喜欢状态联动,无独立价值。
+                    // The other styles' add-to-YouTube-Liked (signed in only, a tick once liked).
+                    // 2026-11-17 曾按"与红心重复"删过,用户复看后定案加回(删后角标区显得
+                    // 光秃)——语义=加入"已喜欢"播放列表,与红心的喜欢状态联动。
+                    if (state.isUserLoggedIn) {
+                        CornerIconButton(
+                            backdrop = backdrop,
+                            // Fork: 红心=云端账号状态(remoteLikeState),经 onSetRemoteLiked 翻转
+                            icon = if (state.remoteLikeState.liked == true) SimpIcons.CheckCircle else SimpIcons.AddCircleOutline,
+                            tint = colors.onSurface,
+                            onClick = { actions.onSetRemoteLiked(state.remoteLikeState.liked != true) },
+                        )
+                    }
                     CornerIconButton(
                         backdrop = backdrop,
                         icon = SimpIcons.PlaylistAdd,
