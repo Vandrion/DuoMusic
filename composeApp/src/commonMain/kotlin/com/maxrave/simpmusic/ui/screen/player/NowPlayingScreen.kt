@@ -601,7 +601,16 @@ private fun Modifier.earlySheetDismissFallback(
                     if (!pulling && !scrollForwarding) {
                         val animating = currentSheetState.isAnimationRunning
                         val inWindow = openedAt.elapsedNow() < SHEET_DISMISS_LOCK_WINDOW
-                        if (!animating && !inWindow) break
+                        if (!animating && !inWindow) {
+                            // 诊断:拒绝接管瞬间的库状态(死手势窗口 0.75-0.95s 取证)
+                            Logger.w(
+                                SHEET_VETO_LOG_TAG,
+                                "fb decline anim=$animating win=$inWindow cur=${currentSheetState.currentValue} " +
+                                    "tgt=${currentSheetState.targetValue} off=${runCatching { currentSheetState.requireOffset() }.getOrDefault(-1f).toInt()} " +
+                                    "t=${openedAt.elapsedNow().inWholeMilliseconds}ms",
+                            )
+                            break
+                        }
                     }
                     val dy = change.positionChange().y
                     if (!pulling && !scrollForwarding) {
@@ -703,10 +712,15 @@ private val SHEET_DISMISS_TOP_CORNER = 28.dp
 //   "fb engage/release"           = 壳层锁窗兜底接管(translationY 路径)
 private const val SHEET_VETO_LOG_TAG = "SheetVeto"
 
-// 打开后的动画锁窗:盖住"动画未启动"的几帧(动画本体 ~400ms 由 isAnimationRunning 覆盖)。
-// 曾取 800ms——真机"开页立即上滑失灵第二次才行"反馈后收紧:库动画锁会阻塞嵌套滚动
-// 分发,窗越长撞上滑/其它手势的面越大;450ms 是动画时长+边界帧的最小覆盖。
-private val SHEET_DISMISS_LOCK_WINDOW = 450.milliseconds
+// 打开后的兜底接管窗(2026-11-17 三度定案,1200ms):库的开页 animateTo 结束后
+// isAnimationRunning 先翻 false,而拖拽互斥锁还在收尾协程手里未放——这段缝隙
+// (模拟器实测 ~0.75-0.95s,真机更快 ~0.6-0.9s)里竖向手势**无人认领**:cur/tgt
+// 全是 Expanded、off=0、anim=false 看似健康,但 54 个纯竖直 move 零消费、sheet
+// 纹丝不动(探针 fb decline+diag 实锤)=真机"开页 ~1s 下滑失灵"根因。窗口必须
+// 覆盖到锁释放之后(实测 924ms 已恢复,取 1200 留余量)。窗内接管语义与锁窗内
+// 一致(translationY 跟手+距离阈值释放);列表滚动不受影响(列表先认领时位移
+// 恒为零,兜底不触发);原生路径在窗外完好(1.0/1.5/2.0s 实测全正常)。
+private val SHEET_DISMISS_LOCK_WINDOW = 1200.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
