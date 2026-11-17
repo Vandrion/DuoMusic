@@ -365,10 +365,28 @@ fun NowPlayingScreen(
                             // 的残留速度=本应拦下的短慢拖被旧速度放行
                             lastGestureVelocityY = 0f
                             var hapticArmed = true
+                            // 诊断:手势事件流画像(真机取证)——move 总数/被消费数/前 8 段
+                            // 位移轨迹。consumed>0=有子层吃事件(找凶手);consumed=0 且
+                            // moves 充足=sheet 自己没接(nested scroll/方向取消类问题)。
+                            var moveCount = 0
+                            var consumedCount = 0
+                            val traj = StringBuilder()
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.pressed) {
+                                    val d = change.positionChange()
+                                    if (d != Offset.Zero) {
+                                        moveCount++
+                                        if (change.isConsumed) consumedCount++
+                                        if (moveCount <= 8) traj.append("(").append(d.x.toInt()).append(",").append(d.y.toInt()).append(")")
+                                    }
+                                }
                                 if (!change.pressed) {
+                                    Logger.w(
+                                        SHEET_VETO_LOG_TAG,
+                                        "diag moves=$moveCount consumed=$consumedCount traj=$traj",
+                                    )
                                     // 诊断日志(真机取证,W 级落文件日志,设置可导出):手势结束时
                                     // 的实测速度与 sheet 实际位移。off≈0=手势被子层消费/没到达
                                     // sheet;off 大=跟手了,结局在 confirm 或库的位置规则。
@@ -379,6 +397,7 @@ fun NowPlayingScreen(
                                     )
                                     break
                                 }
+                                
                                 velocityTracker.addPosition(change.uptimeMillis, change.position + contentBoxPosInWindow)
                                 runCatching {
                                     val offNow = sheetState.requireOffset()

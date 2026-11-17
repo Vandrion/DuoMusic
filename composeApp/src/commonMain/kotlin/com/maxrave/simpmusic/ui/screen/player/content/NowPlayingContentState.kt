@@ -223,19 +223,33 @@ internal fun Modifier.artworkDragPager(
                     change.consume()
                     continue
                 }
-                // 未认领:累计 unconsumed 位移,过 slop 时按方向支配裁决
+                // 未认领:累计 unconsumed 位移,过 slop 后按**带余量的方向支配**裁决
                 total += change.positionChange()
                 if (total.getDistance() >= slop) {
-                    if (abs(total.x) > abs(total.y) && enabled) {
-                        dragging = true
-                        startPage = pager.settledPage
-                        dragPx = 0f
-                        snapHapticArmed = true
-                        onDragChanged(true)
-                        dragState.dispatchRawDelta(total.x) // slop 段并入首帧(框架 overSlop 同款)
-                    } else {
-                        // 竖向主导(或下拉期缴械):弃权,零消费交还 sheet/verticalScroll
-                        break
+                    val ax = abs(total.x)
+                    val ay = abs(total.y)
+                    when {
+                        // 横向认领:|x| 须领先清晰余量(slop/2)。2026-11-17 真机死手势根因:
+                        // 起手方向天然抖动,过 slop 瞬间 |x| 略>|y|(如 22 vs 18)就会把竖向
+                        // 快扫误认领成横滑、消费掉全部剩余事件——sheet 一片事件拿不到
+                        // (off=0 无 confirm 页面不动)=真机体感"下滑失灵";直线注入的
+                        // adb 手势 |x|/|y| 比例恒定进不了这个窄带,模拟器复现不了
+                        // (input motionevent 构造起手横漂才复现,SheetVeto 日志实锤)。
+                        ax > ay + slop / 2f && enabled -> {
+                            dragging = true
+                            startPage = pager.settledPage
+                            dragPx = 0f
+                            snapHapticArmed = true
+                            onDragChanged(true)
+                            dragState.dispatchRawDelta(total.x) // slop 段并入首帧(框架 overSlop 同款)
+                        }
+                        // 竖向弃权:|y| 领先清晰余量,或累计已大仍不明(对角拖延)——关页
+                        // 手势优先于切歌,不明判竖。零消费交还 sheet/verticalScroll。
+                        ay > ax + slop / 2f || total.getDistance() > slop * 4f -> break
+                        // else:两轴接近(|x| 略领先但在余量内)——等待:继续累计、不消费
+                        // 零副作用,后续事件让支配关系明朗(真横滑 |x| 两三帧内拉开;
+                        // 真竖滑 |y| 反超)。等待期 sheet 的拖拽在并行累计,竖向意图
+                        // 它自己会先接手,本探测随后在竖向分支弃权退场。
                     }
                 }
             }
