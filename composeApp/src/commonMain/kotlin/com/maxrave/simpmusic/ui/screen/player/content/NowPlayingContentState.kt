@@ -114,9 +114,14 @@ internal val PlayerBackdropColor = Color(0xFF121212)
  *   才认领横拖;竖向主导直接弃权、零消费,自然交还 sheet/verticalScroll。
  * ②下拉/回弹期缴械:enabled 挂上 !isPullingDown——sheet 处于下拉跟手或弹回动画(offset>8)
  *   时不接单,半截态/回弹窗内的触碰不再被横滑吃掉。
- * 未认领阶段逐事件 Final 通道复核 isConsumed:Main 通道子层先于祖先处理,祖先同事件的
- * 消费只在 Final(父先子后)可见——祖先(sheet/滚动/门)认领后本探测立即弃权,与框架
- * awaitTouchSlopOrCancellation 的取消语义同构;认领后消费位移饿死祖先,同 draggable 语义。
+ * 认领后消费位移饿死祖先,同 draggable 语义。
+ *
+ * (fix 2026-11-17)未认领阶段**不得**做 Final 通道复核(曾在循环内对同一事件再
+ * await 一次 Final pass 查祖先消费):快手势事件背靠背时,这种"一事件双 pass 等待"
+ * 会打乱祖先 sheet 拖拽的事件时序——封面区起手的竖向快扫 sheet 只跟 ~16px 就死在
+ * 半路(速度 1249px/s 却无任何关页决策,模拟器 SheetVeto 日志实锤;删掉双看后同手势
+ * vel=1240/off=131/confirm 放行关页)。方向支配裁决本身已足够:竖向主导在 slop 处
+ * break 弃权,祖先认领后 positionChange() 归零、total 不再增长,不会误认领。
  */
 @Composable
 internal fun Modifier.artworkDragPager(
@@ -230,14 +235,6 @@ internal fun Modifier.artworkDragPager(
                         dragState.dispatchRawDelta(total.x) // slop 段并入首帧(框架 overSlop 同款)
                     } else {
                         // 竖向主导(或下拉期缴械):弃权,零消费交还 sheet/verticalScroll
-                        break
-                    }
-                } else {
-                    // Final 通道复核祖先消费(Main 子层先处理看不到祖先同事件消费)
-                    val finalEvent = awaitPointerEvent(PointerEventPass.Final)
-                    val finalChange = finalEvent.changes.firstOrNull { it.id == down.id }
-                    if (finalChange == null || finalChange.isConsumed) {
-                        if (dragging) snapBackAfterCancel()
                         break
                     }
                 }

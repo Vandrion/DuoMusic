@@ -354,6 +354,12 @@ fun NowPlayingScreen(
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val velocityTracker = VelocityTracker()
                             velocityTracker.resetTracking()
+                            // 第二速度源=sheet offset(事件级更新):原生跟手时手指的 Box 局部
+                            // 坐标≈恒定,唯一动的信息在 box 平移里,而 onGloballyPositioned 是
+                            // 帧级延迟——事件背靠背时窗口系采样会塌到 0(实测);sheet 的
+                            // offset 随拖拽事件同步更新,原生跟手期它就是手指速度的 1:1 镜像
+                            val offsetTracker = VelocityTracker()
+                            offsetTracker.resetTracking()
                             // 新手势开始即清零:confirm 决策若发生在本手势采到首个有效速度
                             // 之前(极快 flick 的 settle 可能先于第二个 move),读到上一手势
                             // 的残留速度=本应拦下的短慢拖被旧速度放行
@@ -374,11 +380,18 @@ fun NowPlayingScreen(
                                     break
                                 }
                                 velocityTracker.addPosition(change.uptimeMillis, change.position + contentBoxPosInWindow)
+                                runCatching {
+                                    val offNow = sheetState.requireOffset()
+                                    if (offNow >= 0f) offsetTracker.addPosition(change.uptimeMillis, Offset(0f, offNow))
+                                }
                                 // 每个 move 实时写:confirmValueChange 在 settle 决策期被调,
                                 // 早于本 up 事件的 Final 通道——结束时才写会拿到上一个手势的
-                                // 旧速度(首轮=0,flick 永远被旧值拦掉,实测踩过)
+                                // 旧速度(首轮=0,flick 永远被旧值拦掉,实测踩过)。双源取大:
+                                // 原生跟手期 offset 源准,sheet 滞后/死手势期窗口系源准
                                 runCatching {
-                                    lastGestureVelocityY = velocityTracker.calculateVelocity().y
+                                    val vFinger = velocityTracker.calculateVelocity().y
+                                    val vSheet = offsetTracker.calculateVelocity().y
+                                    lastGestureVelocityY = if (abs(vSheet) > abs(vFinger)) vSheet else vFinger
                                 }
                                 val h = contentHeightPx
                                 if (h > 0) {
