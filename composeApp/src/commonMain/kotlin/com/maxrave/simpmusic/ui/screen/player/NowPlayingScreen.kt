@@ -74,10 +74,12 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -197,6 +199,17 @@ fun NowPlayingScreen(
     // 程序化关页标记:关页按钮走的 hideSheet() 置位,confirmValueChange 对它放行——
     // 否则 offset≈0 的程序化关闭会被"位移不足"裁决误拦。
     var programmaticHide by remember { mutableStateOf(false) }
+    // 最近一次手势结束时的纵向速度(px/s,Final 通道采样):confirmValueChange 的 flick
+    // 放行判据用——见下方否决线注释(写在这里是回调读取,快照写不触发重组)。
+    var lastGestureVelocityY by remember { mutableFloatStateOf(0f) }
+    // flick 放行速度阈值(dp/s):≈库 AnchoredDraggable 速度阈值(125dp/s)的 2.2 倍,
+    // 真 flick 远高于它,指尖抖动/慢拉远低于它,分界清晰。
+    val dismissFlickVelocityPx =
+        with(LocalDensity.current) { SHEET_DISMISS_FLICK_VELOCITY.dp.toPx() }
+    // 内容 Box 在窗口里的位置(逐帧刷新):速度采样把 change.position(局部)加回它
+    // 得到窗口系指针位置——原生下拉时 sheet 跟手 1:1 平移,局部坐标速度恒为噪声。
+    // 只在指针回调里读,逐帧写入不触发重组。
+    var contentBoxPosInWindow by remember { mutableStateOf(Offset.Zero) }
     // 下拉激活(拖动跟手中):拖动期间冻结重效果层(iOS 控制中心同款降级渲染——七轮封面
     // "质量锁"同族手法)。锁外=sheet offset 流;锁窗内 sheet 不动,由 fallback 回调补。
     var pullActive by remember { mutableStateOf(false) }
@@ -209,18 +222,25 @@ fun NowPlayingScreen(
     val sheetState =
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true,
-            // (fix) 下滑关闭裁决——社区标准解法(confirmValueChange=库的官方拦截点):
-            // sheet 原生 1:1 跟手、原生弹回,松手目标由库自己按"位移过半屏或速度"选定——
-            // 快甩/大幅下拉关页是库的原生行为,这里只 veto"位移极小的纯轻碰擦滑"(库的速度
-            // 阈值过敏正是老毛病"指尖轻碰就整页消失"的根源):库决定去 Hidden 时采样 offset
-            // 不足内容高 8%(~4mm,任何有意的滑动都远超)才否决。程序化关闭一律放行。
+            // (fix) 下滑关闭裁决——confirmValueChange=库的官方拦截点。否决线**必须速度感知**
+            // (2026-11-17"开页 ~1s 下滑失灵"定案):库 AnchoredDraggable 的关页判定=位移过
+            // 半屏(位置规则)**或**释放速度超 125dp/s(速度规则,与拉距无关)——慢拉永远在
+            // 中点以下就进不了 Hidden 判定,所以能走到本回调 Hidden 分支的"短位移"情形全是
+            // **快 flick**:纯位移 8% 线会把这种最自然的"快速轻扫关页"整类拦死=用户体感的
+            // "下滑手势失灵,再划一次才行"(实测复现:600px/s 短 flick 被拦零响应)。改为
+            // iOS 双条件:位移 ≥8%(慢拉有意收尾)或 |速度| ≥flick 阈值(有意轻扫)都放行,
+            // 只拦"又慢又短"的真误触(指尖搭着慢慢蹭 <8% 且 <280dp/s)。程序化关闭一律放行。
             confirmValueChange = { target ->
                 if (target != SheetValue.Hidden) {
                     true
                 } else {
                     val h = contentHeightPx
                     val off = sheetStateRef?.requireOffset() ?: 0f
-                    val allow = programmaticHide || h <= 0 || off >= h * SHEET_DISMISS_MIN_FRACTION
+                    val allow =
+                        programmaticHide || h <= 0 ||
+                            off >= h * SHEET_DISMISS_MIN_FRACTION ||
+                            (off >= h * SHEET_DISMISS_FLICK_MIN_FRACTION &&
+                                abs(lastGestureVelocityY) > dismissFlickVelocityPx)
                     allow
                 }
             },
@@ -311,18 +331,33 @@ fun NowPlayingScreen(
                 Modifier
                     .fillMaxSize()
                     .onSizeChanged { contentHeightPx = it.height }
+                    .onGloballyPositioned { contentBoxPosInWindow = it.positionInWindow() }
                     // (fix) 跨线预告震感(Final 通道旁观,不消费任何事件):拖动中 sheet 越过
                     // 关闭线给一次震感(iOS 式"松手会关"预告,armed 单次,回落重置),读 sheet
                     // 实时 offset 判定——veto 线(SHEET_DISMISS_MIN_FRACTION)之上的拉距松手
-                    // 即关,预告线取同一值。
+                    // 即关,预告线取同一值。同层顺带采样手势纵向速度(confirmValueChange 的
+                    // flick 放行判据用;settle 决策早于 up 事件的 Final 通道,所以每个 move
+                    // 都实时算一次写入,up 时少采这一个点不影响速度)。🚨采样必须用窗口坐标
+                    // positionInWindow():原生下拉时 sheet 表面跟手 1:1 平移,指针的局部
+                    // 坐标位移≈0,局部坐标速度恒为噪声(实测 -137px/s,方向都是反的,
+                    // 探针在 confirm 决策瞬间抓到的真实读数 off=122/vel=-137)。
                     .pointerInput(sheetState, contentHeightPx) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            val velocityTracker = VelocityTracker()
+                            velocityTracker.resetTracking()
                             var hapticArmed = true
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!change.pressed) break
+                                velocityTracker.addPosition(change.uptimeMillis, change.position + contentBoxPosInWindow)
+                                // 每个 move 实时写:confirmValueChange 在 settle 决策期被调,
+                                // 早于本 up 事件的 Final 通道——结束时才写会拿到上一个手势的
+                                // 旧速度(首轮=0,flick 永远被旧值拦掉,实测踩过)
+                                runCatching {
+                                    lastGestureVelocityY = velocityTracker.calculateVelocity().y
+                                }
                                 val h = contentHeightPx
                                 if (h > 0) {
                                     val off =
@@ -550,9 +585,21 @@ private fun Modifier.earlySheetDismissFallback(
 private const val SHEET_DISMISS_FRACTION = 0.15f
 
 
-// confirm veto 线=内容高 8%(~4mm):库已决定去 Hidden 时位移不足此值才否决——拦的只是
-// "指尖轻碰"级误触,任何有意滑动(快甩/下拉)由库原生判定放行。
+// confirm veto 线=内容高 8%:库已决定去 Hidden 时,位移不足此值**且**释放速度低于
+// flick 阈值才否决(速度感知双条件,见 confirmValueChange 注释)——拦的只是"又慢又短"
+// 的指尖蹭滑;快 flick 无论拉距一律放行。
 private const val SHEET_DISMISS_MIN_FRACTION = 0.08f
+
+// flick 放行速度阈值(dp/s):库自身 125dp/s 就按速度关页,本阈值只决定我们对库已判
+// 定关页的 flick 是否放行——取 180dp/s(≈1.4 倍库阈值):中等力度的扫动也放行,慢蹭
+// (典型 <50dp/s)仍被拦。真正防"几十 px 快滑误关"旧投诉的是上面的 4% 位移门槛。
+private const val SHEET_DISMISS_FLICK_VELOCITY = 180f
+
+// 速度放行的**最低位移门槛**(内容高 4% ≈ 1.9cm):短扫必须"有一定位移+够快"两条件同时
+// 成立才关页。历史双向校准:几十 px 的快滑关页=太敏感(用户长期投诉,"轻碰就整页关"),
+// 150px 快扫不关=失灵(2026-11-17 报告)——4% 恰在两案之间:65px@800px/s 弹回(保旧),
+// 130px@1250px/s 关页(修新)。adb 注入速度有运行间波动,阈值别贴着任何一案的实测值。
+private const val SHEET_DISMISS_FLICK_MIN_FRACTION = 0.04f
 
 // 下拉遮罩的静止态透明度(原恒定 .5f;现在下拉时按前段归零曲线从这里渐隐到 0)。
 private const val SHEET_SCRIM_BASE_ALPHA = 0.5f
