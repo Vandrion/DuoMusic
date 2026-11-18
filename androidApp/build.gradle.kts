@@ -30,7 +30,10 @@ android {
                 .toInt()
         versionName =
             libs.versions.version.name
-                .get()
+                .get() +
+                // CI 发 beta 时注入 tag 后缀(-PappVersionSuffix=-beta.N):系统应用信息与
+                // app 内都可见 beta。与 composeApp 的 BuildKonfig 同一属性,见其注释。
+                (project.findProperty("appVersionSuffix") as String? ?: "")
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled = true
 

@@ -115,8 +115,6 @@ import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.TIMESTAMP_REGEX
 import com.maxrave.simpmusic.ui.component.liquidGlass
 import com.maxrave.simpmusic.ui.component.rememberHolderPainter
-import com.maxrave.simpmusic.ui.icon.AddCircleOutline
-import com.maxrave.simpmusic.ui.icon.CheckCircle
 import com.maxrave.simpmusic.ui.icon.CommentOutline
 import com.maxrave.simpmusic.ui.icon.Favorite
 import com.maxrave.simpmusic.ui.icon.FavoriteBorder
@@ -126,6 +124,8 @@ import com.maxrave.simpmusic.ui.icon.Headphones
 import com.maxrave.simpmusic.ui.icon.Lyrics
 import com.maxrave.simpmusic.ui.icon.MoreVert
 import com.maxrave.simpmusic.ui.icon.PlayArrow
+import com.maxrave.simpmusic.ui.icon.AddCircleOutline
+import com.maxrave.simpmusic.ui.icon.CheckCircle
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
 import com.maxrave.simpmusic.ui.icon.QueueMusic
 import com.maxrave.simpmusic.ui.icon.Repeat
@@ -542,8 +542,9 @@ private fun NowPlayingSoundCloudLayout(
                         tint = if (state.screenData.lyricsData != null) colors.onSurface else colors.onSurface.copy(alpha = 0.38f),
                         onClick = onOpenLyrics,
                     )
-                    // The other styles' add-to-YouTube-Liked (signed in only, a tick once liked) and
-                    // add-to-playlist, with the same actions.
+                    // The other styles' add-to-YouTube-Liked (signed in only, a tick once liked).
+                    // 2026-11-17 曾按"与红心重复"删过,用户复看后定案加回(删后角标区显得
+                    // 光秃)——语义=加入"已喜欢"播放列表,与红心的喜欢状态联动。
                     if (state.isUserLoggedIn) {
                         CornerIconButton(
                             backdrop = backdrop,
@@ -701,17 +702,17 @@ private fun NowPlayingSoundCloudLayout(
                 }
                 SoundCloudPlaybackStatus(state = state)
                 Spacer(modifier = Modifier.height(12.dp))
-                CommentBox(
-                    backdrop = backdrop,
-                    position = position,
-                    // Fork: 网易歌无"时刻评论"(数字 id 拉不到 YT timed comments,带时间戳草稿
-                    // 开 YT sheet 恒"评论已关闭")——写评论框与评论图标钮同款路由,走 M7 sheet;
-                    // YT 歌维持带时间戳草稿开 YT 评论 sheet
-                    onWriteComment = { draft ->
-                        if (state.isNeteaseSong) actions.onShowNeteaseComments() else actions.onWriteComment(draft)
-                    },
-                    modifier = Modifier.padding(horizontal = CARD_PADDING),
-                )
+                // Fork(2026-11-17 用户定案):网易歌隐藏评论输入框——时刻评论/emoji 快捷
+                // 语义只对 YT timed comments 成立,网易歌点它只是无草稿开 M7 sheet,与底部
+                // 评论图标钮完全重复(还顶着"写评论…"占位文案误导);评论入口只留图标钮。
+                if (!state.isNeteaseSong) {
+                    CommentBox(
+                        backdrop = backdrop,
+                        position = position,
+                        onWriteComment = actions.onWriteComment,
+                        modifier = Modifier.padding(horizontal = CARD_PADDING),
+                    )
+                }
             }
         }
 

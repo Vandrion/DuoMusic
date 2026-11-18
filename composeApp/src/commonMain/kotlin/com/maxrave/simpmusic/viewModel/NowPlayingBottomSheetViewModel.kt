@@ -270,6 +270,10 @@ class NowPlayingBottomSheetViewModel(
                     currentNeteaseIdentity == null || currentNeteaseIdentity == startIdentity
                 result
                     .onSuccess { list ->
+                        com.maxrave.logger.Logger.w(
+                            "AddToPlaylist",
+                            "netease load ok size=${list.size} fresh=$identityStillCurrent",
+                        )
                         if (identityStillCurrent) {
                             _uiState.update { it.copy(listNeteasePlaylist = list) }
                         } else {
@@ -279,6 +283,13 @@ class NowPlayingBottomSheetViewModel(
                             )
                         }
                     }.onFailure { e ->
+                        // 诊断(2026-11-17"冷启首开网易列表空"):notLogged 分支清列表且不置
+                        // failed=UI 无重试行,与"未知 cookie 渲染成未登录"的观感相同——
+                        // 真机复现时靠这行区分是服务端判登出还是别的。
+                        com.maxrave.logger.Logger.w(
+                            "AddToPlaylist",
+                            "netease load fail: ${e::class.simpleName} ${e.message}",
+                        )
                         if (e is NeteaseNotLoggedInException) {
                             _uiState.update { it.copy(listNeteasePlaylist = null, neteasePlaylistsFailed = false) }
                         } else if (identityStillCurrent) {
@@ -286,6 +297,25 @@ class NowPlayingBottomSheetViewModel(
                         }
                     }
             }
+    }
+
+    /**
+     * 菜单/弹窗**同步**可取的目标曲 id(与 setSongEntity 的派生同源):song 非空=列表行
+     * 曲目;空=在播曲(MV 场景带 NETEASE_MV 前缀,与 setSongEntity 的换算一致)。
+     * 供 AddToPlaylistModalBottomSheet 的 videoId 首帧使用——songUIState 要等
+     * LaunchedEffect 里的 setSongEntity 才填,拿它当首帧参数做分区判定会把网易歌
+     * 首开判成非网易(2026-11-18 beta.12 直开路径实锤,菜单路径防御性同修)。
+     */
+    fun targetVideoIdSync(song: SongEntity?): String {
+        if (song != null) return song.videoId
+        val nowPlaying = mediaPlayerHandler.nowPlayingState.value
+        val currentMvId =
+            nowPlaying.mediaItem?.mediaId?.takeIf { it.startsWith(NETEASE_MV_MEDIA_ID_PREFIX) }
+        return nowPlaying.songEntity
+            ?.let { if (currentMvId != null) it.copy(videoId = currentMvId) else it }
+            ?.videoId
+            ?: nowPlaying.track?.videoId
+            ?: ""
     }
 
     fun resetPlaylists() {

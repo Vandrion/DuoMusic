@@ -2036,7 +2036,9 @@ fun NowPlayingBottomSheet(
             onNeteasePlaylistClick = {
                 viewModel.onUIEvent(NowPlayingBottomSheetUIEvent.AddToNeteasePlaylist(it.browseId))
             },
-            videoId = uiState.songUIState.videoId,
+            // 首帧同步 id(与直开路径同修,beta.12):songUIState 等 LaunchedEffect 才填,
+            // 拿它做分区判定首帧会把网易歌判成非网易(tab 锁错+分区隐藏)
+            videoId = viewModel.targetVideoIdSync(song).ifEmpty { uiState.songUIState.videoId },
         )
     }
     if (artist) {
@@ -3953,8 +3955,16 @@ fun AddToPlaylistModalBottomSheet(
     val coroutineScope = rememberCoroutineScope()
     val modelBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val youtubeLoggedIn by dataStoreManager.loggedIn.collectAsState(null)
-    val neteaseCookie by dataStoreManager.neteaseCookie.collectAsState("")
+    // 冷启竞态修复(2026-11-17"第一次点添加到歌单,网易列表大概率空,重点一次就好"):
+    // 这两个是冷流,首次收集要等 DataStore 磁盘首读(冷启可达数百 ms)——占位值曾用
+    // ""/null,未知期被当"未登录":分区 chip/spinner/列表整段不渲染=用户看到的"空";
+    // DataStore 读热后(重开弹窗)首帧即有值。修=null(未知)与"确定未登录"分开:
+    // 未知期显示 spinner(selectedCloudLoading),确定值到达后行为与原先一致。
+    // VM 侧拉取无此问题(用 .first() 挂起等真值),纯 UI 门控竞态;YT 分区同机制同修。
+    val youtubeLoggedIn by dataStoreManager.loggedIn.map<String, String?> { it }.collectAsState(null)
+    val neteaseCookieKnownState by dataStoreManager.neteaseCookie.map<String, String?> { it }.collectAsState(null)
+    val neteaseCookie = neteaseCookieKnownState.orEmpty()
+    val neteaseCookieKnown = neteaseCookieKnownState != null
     val hideModalBottomSheet: () -> Unit =
         {
             coroutineScope.launch {
@@ -4228,8 +4238,14 @@ fun AddToPlaylistModalBottomSheet(
                     // - 本会话还没成功拉到过(list==null)且已登录 → spinner 行;
                     // - 终态失败且无列表可展示 → "出错了+重试"行;有旧列表则静默用旧值。
                     val selectedCloudLoading =
-                        (selectedLibrary == 1 && listYouTubePlaylist == null && youtubeLoggedIn == DataStoreManager.TRUE) ||
-                            (selectedLibrary == 2 && listNeteasePlaylist == null && neteaseCookie.isNotBlank())
+                        (
+                            selectedLibrary == 1 && listYouTubePlaylist == null &&
+                                (youtubeLoggedIn == DataStoreManager.TRUE || youtubeLoggedIn == null)
+                        ) ||
+                            (
+                                selectedLibrary == 2 && listNeteasePlaylist == null &&
+                                    (neteaseCookie.isNotBlank() || !neteaseCookieKnown)
+                            )
                     val selectedCloudFailed =
                         (selectedLibrary == 1 && youTubeLoadFailed && visibleYouTubePlaylists.isEmpty()) ||
                             (selectedLibrary == 2 && neteaseLoadFailed && visibleNeteasePlaylists.isEmpty())
