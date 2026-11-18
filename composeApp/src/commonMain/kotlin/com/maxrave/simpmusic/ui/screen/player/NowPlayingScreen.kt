@@ -1780,7 +1780,12 @@ fun NowPlayingScreenContent(
                 viewModel.onUIEvent(NowPlayingBottomSheetUIEvent.AddToNeteasePlaylist(playlist.browseId))
                 showAddToPlaylistDirectly = false
             },
-            videoId = uiState.songUIState.videoId,
+            // 直接路径首帧竞态(真机日志定谳:netease load ok size=16 但界面空——
+            // setSongEntity 在本弹窗 LaunchedEffect 里才跑,首帧 videoId="" →
+            // selectionHasNetease=false → 初始 tab remember 成 YT+网易分区结构性隐藏,
+            // 正确值后到也不翻 tab;VM 热后第二次开才正常)。当前曲 id 壳层同步可得,
+            // 直接传;uiState 兜底极端态(队列未恢复)。
+            videoId = nowPlayingVideoId ?: uiState.songUIState.videoId,
         )
     }
 
