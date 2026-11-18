@@ -2036,7 +2036,9 @@ fun NowPlayingBottomSheet(
             onNeteasePlaylistClick = {
                 viewModel.onUIEvent(NowPlayingBottomSheetUIEvent.AddToNeteasePlaylist(it.browseId))
             },
-            videoId = uiState.songUIState.videoId,
+            // 首帧同步 id(与直开路径同修,beta.12):songUIState 等 LaunchedEffect 才填,
+            // 拿它做分区判定首帧会把网易歌判成非网易(tab 锁错+分区隐藏)
+            videoId = viewModel.targetVideoIdSync(song).ifEmpty { uiState.songUIState.videoId },
         )
     }
     if (artist) {

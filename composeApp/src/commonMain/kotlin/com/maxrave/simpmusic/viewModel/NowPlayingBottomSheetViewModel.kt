@@ -299,6 +299,25 @@ class NowPlayingBottomSheetViewModel(
             }
     }
 
+    /**
+     * 菜单/弹窗**同步**可取的目标曲 id(与 setSongEntity 的派生同源):song 非空=列表行
+     * 曲目;空=在播曲(MV 场景带 NETEASE_MV 前缀,与 setSongEntity 的换算一致)。
+     * 供 AddToPlaylistModalBottomSheet 的 videoId 首帧使用——songUIState 要等
+     * LaunchedEffect 里的 setSongEntity 才填,拿它当首帧参数做分区判定会把网易歌
+     * 首开判成非网易(2026-11-18 beta.12 直开路径实锤,菜单路径防御性同修)。
+     */
+    fun targetVideoIdSync(song: SongEntity?): String {
+        if (song != null) return song.videoId
+        val nowPlaying = mediaPlayerHandler.nowPlayingState.value
+        val currentMvId =
+            nowPlaying.mediaItem?.mediaId?.takeIf { it.startsWith(NETEASE_MV_MEDIA_ID_PREFIX) }
+        return nowPlaying.songEntity
+            ?.let { if (currentMvId != null) it.copy(videoId = currentMvId) else it }
+            ?.videoId
+            ?: nowPlaying.track?.videoId
+            ?: ""
+    }
+
     fun resetPlaylists() {
         viewModelScope.launch {
             localPlaylistRepository.getAllLocalPlaylists().collectLatest { list ->

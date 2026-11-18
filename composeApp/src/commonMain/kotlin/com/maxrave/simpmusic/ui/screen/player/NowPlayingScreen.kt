@@ -1783,9 +1783,9 @@ fun NowPlayingScreenContent(
             // 直接路径首帧竞态(真机日志定谳:netease load ok size=16 但界面空——
             // setSongEntity 在本弹窗 LaunchedEffect 里才跑,首帧 videoId="" →
             // selectionHasNetease=false → 初始 tab remember 成 YT+网易分区结构性隐藏,
-            // 正确值后到也不翻 tab;VM 热后第二次开才正常)。当前曲 id 壳层同步可得,
-            // 直接传;uiState 兜底极端态(队列未恢复)。
-            videoId = nowPlayingVideoId ?: uiState.songUIState.videoId,
+            // 正确值后到也不翻 tab;VM 热后第二次开才正常)。同步 id 走 VM 同源帮手
+            // (targetVideoIdSync,含 MV 前缀换算);uiState 兜底极端态(队列未恢复)。
+            videoId = viewModel.targetVideoIdSync(null).ifEmpty { uiState.songUIState.videoId },
         )
     }
 
